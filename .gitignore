@@ -1,4 +1,19 @@
-node_modules
+# dependencies and build output
+node_modules/
 main.js
-*.log
+*.tsbuildinfo
+coverage/
+
+# local config and per-vault data
 .deploy.json
+data.json
+
+# logs, OS and editor noise
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code local settings
+.claude/settings.local.json

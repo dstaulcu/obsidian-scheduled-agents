@@ -35,3 +35,7 @@ npm run deploy                    # build and copy into the vault in .deploy.jso
 ```
 
 Layout: `src/core` is pure logic (no Obsidian imports, unit-tested), `src/executors` holds the harness interface, capability profile and registry, `src/tagreview` the edit parser, validator and apply engine, `src/ui` the settings tab and job editor, `src/brand.ts` the product-name defaults, `src/main.ts` the plugin wiring.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
