@@ -13,6 +13,10 @@ export interface JobConfig {
   model: string // empty = default
   timeoutMinutes: number // 0 = default
   skills: string[]
+  /** Harness id; empty = the plugin's default harness. */
+  harness?: string
+  /** Set on jobs seeded from the built-in catalog; enables "reset to default". */
+  builtin?: string
   prompt: string
 }
 

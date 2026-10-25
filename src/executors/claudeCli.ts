@@ -1,6 +1,14 @@
 import { spawn } from 'child_process'
 import { parseSkills } from '../core/validate'
-import { ExecRequest, ExecResult, JobExecutor } from './types'
+import { ExecRequest, ExecResult, ExecutorCapabilities, JobExecutor } from './types'
+
+/** Read-only comes from --tools Read,Glob,Grep + dontAsk, which Claude Code enforces itself. */
+export const CLAUDE_CAPABILITIES: ExecutorCapabilities = {
+  enforcesReadOnly: true,
+  supportsBudget: true,
+  supportsSkills: true,
+  reportsCost: true,
+}
 
 /** Port of Get-ClaudeArguments: read-only tools, no MCP, no prompts, user settings only. */
 export function buildClaudeArgs(req: Pick<ExecRequest, 'model' | 'maxBudgetUsd' | 'skills'>): string[] {
@@ -81,6 +89,7 @@ function runProcess(claudePath: string, args: string[], req: ExecRequest): Promi
 
 export class ClaudeCliExecutor implements JobExecutor {
   readonly id = 'claude-cli'
+  readonly capabilities = CLAUDE_CAPABILITIES
 
   constructor(private readonly getClaudePath: () => string) {}
 

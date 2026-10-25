@@ -1,32 +1,51 @@
-import { FileSystemAdapter, FuzzySuggestModal, Notice, Plugin, TFile } from 'obsidian'
+import * as fs from 'fs'
+import * as nodePath from 'path'
+import { FileSystemAdapter, FuzzySuggestModal, Notice, normalizePath, Plugin, TFile } from 'obsidian'
 import { formatLogRow, LogStatus, runPass, RUN_LOG_HEADER } from './core/pass'
+import { LOG_TAG } from './brand'
+import { BUILTINS, ensureBuiltins } from './core/builtinJobs'
+import { readDailyNotesConfig } from './core/dailyNotes'
 import { runJob, RunSettings } from './core/runner'
 import { JobConfig } from './core/types'
 import { FsVaultIO } from './core/vaultIO'
-import { ClaudeCliExecutor } from './executors/claudeCli'
-import { JobExecutor } from './executors/types'
-import { BrainAgentSettings, normalizeSettings } from './settings'
-import { BrainAgentSettingTab } from './ui/SettingTab'
+import { rebasePath } from './core/vaultPath'
+import { getDescriptor } from './executors/registry'
+import { AgentSettings, normalizeSettings } from './settings'
+import { registerTagReview, undoLastBatch } from './tagreview/panel'
+import { bootstrapText, isEmptyVocabulary, missingVocabularyText, starterVocabulary } from './tagreview/scaffold'
+import { AgentSettingTab } from './ui/SettingTab'
 
-export default class BrainAgentPlugin extends Plugin {
-  settings!: BrainAgentSettings
-  executor!: JobExecutor
+export default class AgentPlugin extends Plugin {
+  settings!: AgentSettings
   private busy = false
   private timer: number | null = null
   private statusEl: HTMLElement | null = null
 
   async onload() {
     this.settings = normalizeSettings(await this.loadData())
-    this.executor = new ClaudeCliExecutor(() => this.settings.claudePath)
+
+    if (ensureBuiltins(this.settings)) await this.saveSettings()
 
     this.statusEl = this.addStatusBarItem()
-    this.addSettingTab(new BrainAgentSettingTab(this.app, this))
+    this.addSettingTab(new AgentSettingTab(this.app, this))
 
     this.addCommand({
       id: 'run-job',
       name: 'Run job now…',
       callback: () => new JobPicker(this).open(),
     })
+    this.addCommand({
+      id: 'run-builtins',
+      name: 'Run all built-in jobs now',
+      callback: () => void this.runBuiltinsNow(),
+    })
+    for (const b of BUILTINS) {
+      this.addCommand({
+        id: `run-builtin-${b.id.replace(/^[^/]*\//, '')}`,
+        name: `Run ${b.name} now`,
+        callback: () => void this.runBuiltinsNow(b.id),
+      })
+    }
     this.addCommand({
       id: 'run-due',
       name: 'Run all due jobs now',
@@ -38,15 +57,50 @@ export default class BrainAgentPlugin extends Plugin {
       callback: () => void this.openRunLog(),
     })
 
+    registerTagReview(this)
+    this.addCommand({
+      id: 'undo-tag-review',
+      name: 'Undo last tag-review batch',
+      callback: () => void undoLastBatch(this),
+    })
+
     this.restartTimer()
     this.app.workspace.onLayoutReady(() => {
       // catch-up pass shortly after startup, once the vault index has settled
+      void this.ensureRunLog()
+      void this.ensureGlossary()
       window.setTimeout(() => void this.tick(), 10_000)
     })
   }
 
   onunload() {
     this.stopTimer()
+  }
+
+  /**
+   * Rename the plugin folder with Obsidian's own rename (so links update), then re-point everything that
+   * referred to it: job outputs, allowed and protected folders, and the vocabulary path if it lived inside.
+   */
+  async renamePluginFolder(raw: string): Promise<void> {
+    const next = normalizePath(raw.trim()).replace(/^\/+|\/+$/g, '')
+    const old = this.settings.pluginFolder
+    if (!next || next === old) return
+    if (next.split('/').some((seg) => !seg || seg.startsWith('.'))) throw new Error('Choose a normal vault folder name')
+    const vault = this.app.vault
+    if (vault.getAbstractFileByPath(next)) throw new Error(`"${next}" already exists; choose another name`)
+    const folder = vault.getAbstractFileByPath(old)
+    if (folder) {
+      const parent = next.split('/').slice(0, -1).join('/')
+      if (parent && !vault.getAbstractFileByPath(parent)) await vault.createFolder(parent)
+      await this.app.fileManager.renameFile(folder, next)
+    }
+    const move = (p: string) => rebasePath(p, old, next)
+    for (const j of this.settings.jobs) j.output = move(j.output)
+    this.settings.allowedOutputFolders = this.settings.allowedOutputFolders.map(move)
+    this.settings.protectedFolders = this.settings.protectedFolders.map(move)
+    this.settings.tagVocabularyPath = move(this.settings.tagVocabularyPath)
+    this.settings.pluginFolder = next
+    await this.saveSettings()
   }
 
   async saveSettings() {
@@ -67,19 +121,76 @@ export default class BrainAgentPlugin extends Plugin {
 
   get vaultPath(): string {
     const a = this.app.vault.adapter
-    if (!(a instanceof FileSystemAdapter)) throw new Error('Brain Agent needs a local (desktop) vault')
+    if (!(a instanceof FileSystemAdapter)) throw new Error(`${this.manifest.name} needs a local (desktop) vault`)
     return a.getBasePath()
   }
 
-  private runSettings(): RunSettings {
+  /** Tag Review prompt text for an empty or missing vocabulary; '' when the vocabulary has tags. */
+  private vocabularyBootstrap(): string {
+    const path = this.settings.tagVocabularyPath
+    try {
+      const text = fs.readFileSync(nodePath.join(this.vaultPath, path), 'utf8')
+      return isEmptyVocabulary(text) ? bootstrapText(path) : ''
+    } catch {
+      return missingVocabularyText(path)
+    }
+  }
+
+  /** Create the starter glossary when the vocabulary lives in the plugin folder and does not exist yet. */
+  async ensureGlossary(): Promise<void> {
+    const vault = this.app.vault
+    const path = normalizePath(this.settings.tagVocabularyPath)
+    if (vault.getAbstractFileByPath(path)) return
+    if (!path.toLowerCase().startsWith(this.settings.pluginFolder.toLowerCase() + '/')) return
+    try {
+      const dir = path.split('/').slice(0, -1).join('/')
+      const parts = dir.split('/')
+      for (let i = 1; i <= parts.length; i++) {
+        const d = parts.slice(0, i).join('/')
+        if (!vault.getAbstractFileByPath(d)) await vault.createFolder(d)
+      }
+      await vault.create(path, starterVocabulary())
+    } catch (e) {
+      console.error(`[${LOG_TAG}] could not create the starter glossary`, e)
+    }
+  }
+
+  /** Run log page, always inside the plugin folder. */
+  get runLogPath(): string {
+    return `${this.settings.pluginFolder}/Run Log.md`
+  }
+
+  /** Folders jobs must not read for suggestions or edit: plugin folder, glossary, .obsidian, plus the user's list. */
+  skipFolders(): string[] {
+    const glossary = this.settings.tagVocabularyPath.split('/').slice(0, -1).join('/')
+    const all = ['.obsidian', glossary, this.settings.pluginFolder, ...this.settings.protectedFolders]
+    return [...new Set(all.map((f) => f.trim().replace(/^\/+|\/+$/g, '')).filter(Boolean))]
+  }
+
+  protectedPrefixes(): string[] {
+    return this.skipFolders().map((f) => f + '/')
+  }
+
+  harnessIdFor(job: Pick<JobConfig, 'harness'>): string {
+    return job.harness || this.settings.executor
+  }
+
+  runSettings(harnessId: string = this.settings.executor): RunSettings {
     return {
       vaultPath: this.vaultPath,
-      defaultModel: this.settings.defaultModel,
+      defaultModel: this.settings.harnesses[harnessId]?.defaultModel ?? 'sonnet',
       defaultTimeoutMinutes: this.settings.defaultTimeoutMinutes,
       maxBudgetUsd: this.settings.maxBudgetUsd,
+      dailyNotes: readDailyNotesConfig(this.vaultPath),
+      brand: {
+        pluginFolder: this.settings.pluginFolder,
+        pluginName: this.manifest.name,
+        skipPaths: this.skipFolders().map((f) => `\`${f}/\``).join(', '),
+        vocabularyPath: this.settings.tagVocabularyPath,
+        bootstrap: this.vocabularyBootstrap(),
+      },
       rules: {
-        promptsFolder: this.settings.promptsFolder,
-        allowedFolders: this.settings.allowedOutputFolders,
+        allowedFolders: [...new Set([this.settings.pluginFolder, ...this.settings.allowedOutputFolders])],
       },
     }
   }
@@ -87,11 +198,11 @@ export default class BrainAgentPlugin extends Plugin {
   private async writeLog(job: Pick<JobConfig, 'name'> | { name: string }, status: LogStatus, detail: string) {
     try {
       const io = new FsVaultIO(this.vaultPath)
-      const page = this.settings.runLogPage
+      const page = this.runLogPath
       if (!(await io.exists(page))) await io.writeAtomic(page, RUN_LOG_HEADER)
       await io.append(page, formatLogRow(new Date(), job.name, status, detail) + '\n')
     } catch (e) {
-      console.error('[brain-agent] could not write run log', e)
+      console.error(`[${LOG_TAG}] could not write run log`, e)
     }
   }
 
@@ -101,6 +212,16 @@ export default class BrainAgentPlugin extends Plugin {
     await this.pass({})
   }
 
+  /** Run built-in jobs one after another (all of them, or one by built-in id), ignoring schedule and enabled flag. */
+  async runBuiltinsNow(onlyBuiltin?: string): Promise<void> {
+    const jobs = this.settings.jobs.filter((j) => j.builtin && (!onlyBuiltin || j.builtin === onlyBuiltin))
+    if (!jobs.length) {
+      new Notice(`${this.manifest.name}: no built-in job found`)
+      return
+    }
+    for (const job of jobs) await this.runNow(job)
+  }
+
   /** Run one job immediately, ignoring schedule and enabled flag. */
   async runNow(job: JobConfig): Promise<void> {
     await this.pass({ force: true, onlyId: job.id })
@@ -108,13 +229,12 @@ export default class BrainAgentPlugin extends Plugin {
 
   private async pass(opts: { force?: boolean; onlyId?: string }) {
     if (this.busy) {
-      new Notice('Brain Agent: a job is already running')
+      new Notice(`${this.manifest.name}: a job is already running`)
       return
     }
     this.busy = true
     try {
       const io = new FsVaultIO(this.vaultPath)
-      const deps = { settings: this.runSettings(), io, executor: this.executor }
       const ran = await runPass({
         jobs: this.settings.jobs,
         state: this.settings.state,
@@ -123,8 +243,12 @@ export default class BrainAgentPlugin extends Plugin {
         force: opts.force,
         onlyId: opts.onlyId,
         run: (job, now) => {
+          const id = this.harnessIdFor(job)
+          const desc = getDescriptor(id)
+          if (!desc) return Promise.resolve({ ok: false, message: `Unknown harness '${id}'`, seconds: 0 })
           this.setStatus(`running ${job.name}…`)
-          return runJob(job, now, deps)
+          const executor = desc.create(() => this.settings.harnesses[id])
+          return runJob(job, now, { settings: this.runSettings(id), io, executor })
         },
         log: (job, status, detail) => this.writeLog(job, status, detail),
         save: () => this.saveSettings(),
@@ -133,16 +257,16 @@ export default class BrainAgentPlugin extends Plugin {
         for (const { job, result } of ran) {
           new Notice(
             result.ok
-              ? `Brain Agent: ${job.name} done (${result.seconds}s) → ${result.outputPath}`
-              : `Brain Agent: ${job.name} failed: ${result.message}`,
+              ? `${this.manifest.name}: ${job.name} done (${result.seconds}s) → ${result.outputPath}`
+              : `${this.manifest.name}: ${job.name} failed: ${result.message}`,
             8000,
           )
         }
       }
     } catch (e) {
-      console.error('[brain-agent] pass failed', e)
+      console.error(`[${LOG_TAG}] pass failed`, e)
       await this.writeLog({ name: 'runner' }, 'error', (e as Error).message)
-      new Notice(`Brain Agent error: ${(e as Error).message}`)
+      new Notice(`${this.manifest.name} error: ${(e as Error).message}`)
     } finally {
       this.busy = false
       this.setStatus('')
@@ -150,18 +274,34 @@ export default class BrainAgentPlugin extends Plugin {
   }
 
   private setStatus(text: string) {
-    this.statusEl?.setText(text ? `Brain Agent: ${text}` : '')
+    this.statusEl?.setText(text ? `${this.manifest.name}: ${text}` : '')
+  }
+
+  /** Create the run log page (and its folder) with just the header if it does not exist yet. */
+  async ensureRunLog(): Promise<TFile | null> {
+    const vault = this.app.vault
+    const page = normalizePath(this.runLogPath)
+    const existing = vault.getAbstractFileByPath(page)
+    if (existing instanceof TFile) return existing
+    try {
+      const dir = page.split('/').slice(0, -1).join('/')
+      if (dir && !vault.getAbstractFileByPath(dir)) await vault.createFolder(dir)
+      return await vault.create(page, RUN_LOG_HEADER)
+    } catch (e) {
+      console.error(`[${LOG_TAG}] could not create run log`, e)
+      return null
+    }
   }
 
   async openRunLog() {
-    const f = this.app.vault.getAbstractFileByPath(this.settings.runLogPage)
-    if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f)
-    else new Notice('No run log yet')
+    const f = await this.ensureRunLog()
+    if (f) await this.app.workspace.getLeaf(false).openFile(f)
+    else new Notice(`${this.manifest.name}: could not create the run log page`)
   }
 }
 
 class JobPicker extends FuzzySuggestModal<JobConfig> {
-  constructor(private plugin: BrainAgentPlugin) {
+  constructor(private plugin: AgentPlugin) {
     super(plugin.app)
     this.setPlaceholder('Run which job now?')
   }

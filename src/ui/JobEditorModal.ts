@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from 'obsidian'
+import { EXECUTORS } from '../executors/registry'
 import { resolveOutput } from '../core/runner'
 import { DAY_NAMES, JobConfig, MODES, SCHEDULES } from '../core/types'
 import { parseSkills, validateJob } from '../core/validate'
@@ -26,7 +27,7 @@ export class JobEditorModal extends Modal {
   onOpen() {
     const { contentEl } = this
     contentEl.empty()
-    contentEl.addClass('brain-agent-editor')
+    contentEl.addClass('scheduled-agents-editor')
     this.titleEl.setText(this.job.name ? `Edit job: ${this.job.name}` : 'New job')
 
     new Setting(contentEl).setName('Name').setDesc('Used in wikilinks and the run log.').addText((t) =>
@@ -48,7 +49,7 @@ export class JobEditorModal extends Modal {
           this.renderPreview()
         }),
       )
-    this.previewEl = contentEl.createDiv({ cls: 'setting-item-description brain-agent-preview' })
+    this.previewEl = contentEl.createDiv({ cls: 'setting-item-description scheduled-agents-preview' })
 
     new Setting(contentEl)
       .setName('Output mode')
@@ -58,7 +59,12 @@ export class JobEditorModal extends Modal {
         d.setValue(this.job.mode).onChange((v) => (this.job.mode = v as JobConfig['mode']))
       })
 
-    new Setting(contentEl).setName('Model').setDesc('Blank = plugin default.').addText((t) =>
+    new Setting(contentEl).setName('Harness').setDesc('Blank = plugin default.').addDropdown((d) => {
+      d.addOption('', '(default)')
+      EXECUTORS.forEach((e) => d.addOption(e.id, e.label))
+      d.setValue(this.job.harness ?? '').onChange((v) => (this.job.harness = v))
+    })
+    new Setting(contentEl).setName('Model').setDesc('Blank = harness default.').addText((t) =>
       t.setPlaceholder('sonnet').setValue(this.job.model).onChange((v) => (this.job.model = v)),
     )
     new Setting(contentEl).setName('Timeout (minutes)').setDesc('0 = plugin default.').addText((t) =>
@@ -70,13 +76,13 @@ export class JobEditorModal extends Modal {
       .addText((t) => t.setValue(this.skillsText).onChange((v) => (this.skillsText = v)))
 
     const promptSetting = new Setting(contentEl).setName('Prompt').setDesc('The instruction Claude runs. Templates work here too.')
-    promptSetting.settingEl.addClass('brain-agent-prompt-setting')
-    const area = contentEl.createEl('textarea', { cls: 'brain-agent-prompt' })
+    promptSetting.settingEl.addClass('scheduled-agents-prompt-setting')
+    const area = contentEl.createEl('textarea', { cls: 'scheduled-agents-prompt' })
     area.value = this.job.prompt
     area.rows = 10
     area.addEventListener('input', () => (this.job.prompt = area.value))
 
-    this.errorEl = contentEl.createDiv({ cls: 'brain-agent-error mod-warning' })
+    this.errorEl = contentEl.createDiv({ cls: 'scheduled-agents-error mod-warning' })
 
     new Setting(contentEl)
       .addButton((b) => b.setButtonText('Cancel').onClick(() => this.close()))

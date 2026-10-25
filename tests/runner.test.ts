@@ -5,10 +5,11 @@ import { runPass } from '../src/core/pass'
 import { runJob, RunSettings } from '../src/core/runner'
 import { FsVaultIO } from '../src/core/vaultIO'
 import { JobConfig, JobState } from '../src/core/types'
-import { ExecRequest, ExecResult, JobExecutor } from '../src/executors/types'
+import { ExecRequest, ExecResult, ExecutorCapabilities, JobExecutor } from '../src/executors/types'
 
 class FakeExecutor implements JobExecutor {
   readonly id = 'fake'
+  capabilities: ExecutorCapabilities = { enforcesReadOnly: true, supportsBudget: true, supportsSkills: true, reportsCost: true }
   calls: ExecRequest[] = []
   constructor(private results: ExecResult[]) {}
   async execute(req: ExecRequest): Promise<ExecResult> {
@@ -30,7 +31,7 @@ beforeEach(() => {
   vault = fs.mkdtempSync(path.join(os.tmpdir(), 'ba-'))
   settings = {
     vaultPath: vault, defaultModel: 'sonnet', defaultTimeoutMinutes: 10, maxBudgetUsd: 0.5,
-    rules: { promptsFolder: 'BrainAgent/Prompts', allowedFolders: ['BrainAgent', 'Weekly Summaries'] },
+    rules: { allowedFolders: ['BrainAgent', 'Weekly Summaries'] },
   }
 })
 afterEach(() => fs.rmSync(vault, { recursive: true, force: true }))
@@ -74,6 +75,16 @@ describe('runJob', () => {
     const r = await runJob({ ...job, output: 'Glossary/_tags' }, now, deps(ex))
     expect(r.ok).toBe(false)
     expect(r.message).toMatch(/allowed output folders/)
+    expect(ex.calls).toHaveLength(0)
+  })
+  it('refuses jobs the harness cannot safely run', async () => {
+    const ex = new FakeExecutor([])
+    ex.capabilities = { ...ex.capabilities, enforcesReadOnly: false }
+    const r1 = await runJob(job, now, deps(ex))
+    expect(r1.message).toMatch(/read-only/)
+    ex.capabilities = { ...ex.capabilities, enforcesReadOnly: true, supportsSkills: false }
+    const r2 = await runJob({ ...job, skills: ['x'] }, now, deps(ex))
+    expect(r2.message).toMatch(/skills/)
     expect(ex.calls).toHaveLength(0)
   })
   it('surfaces executor failure and writes nothing', async () => {
@@ -130,5 +141,13 @@ describe('runPass', () => {
     expect(await runPass(a.opts)).toHaveLength(0)
     const b = mk([{ ok: true }], state, { jobs: [disabled], force: true, onlyId: 'j1' })
     expect(await runPass(b.opts)).toHaveLength(1)
+  })
+})
+
+describe('source reference', () => {
+  it('wikilinks user jobs but not built-ins', async () => {
+    const { sourceRef } = await import('../src/core/runner')
+    expect(sourceRef({ name: 'Mine', builtin: undefined })).toBe('[[Mine]]')
+    expect(sourceRef({ name: 'Tag Review', builtin: 'default/tag-review' })).toBe('Tag Review')
   })
 })

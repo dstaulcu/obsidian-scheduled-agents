@@ -16,13 +16,14 @@ export const fmtTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}
 /** Local ISO-ish stamp without zone, like .NET's "s" format. */
 export const fmtStamp = (d: Date) => `${fmtDate(d)}T${fmtTime(d)}:${pad(d.getSeconds())}`
 
-export function expandTemplate(text: string, now: Date, vault: string): string {
+export function expandTemplate(text: string, now: Date, vault: string, extra: Record<string, string> = {}): string {
   const { year, week } = isoWeek(now)
   const map: Record<string, string> = {
     date: fmtDate(now),
     week: `${year}-W${pad(week)}`,
     month: `${now.getFullYear()}-${pad(now.getMonth() + 1)}`,
     vault,
+    ...extra,
   }
   let out = text
   for (const [k, v] of Object.entries(map)) out = out.split(`{{${k}}}`).join(v)
