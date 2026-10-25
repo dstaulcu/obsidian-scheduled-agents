@@ -1,6 +1,7 @@
 import * as os from 'os'
 import * as path from 'path'
-import { App, Modal, Notice, PluginSettingTab, Setting } from 'obsidian'
+import { apiVersion, App, Modal, Notice, PluginSettingTab, Setting } from 'obsidian'
+import { REPO_URL } from '../brand'
 import type AgentPlugin from '../main'
 import { getLatestOccurrence, parseStamp } from '../core/schedule'
 import { JobConfig } from '../core/types'
@@ -25,6 +26,7 @@ export class AgentSettingTab extends PluginSettingTab {
     containerEl.empty()
     this.renderJobs(containerEl)
     this.renderGeneral(containerEl)
+    this.renderReport(containerEl)
   }
 
   private renderJobs(el: HTMLElement) {
@@ -221,6 +223,65 @@ export class AgentSettingTab extends PluginSettingTab {
           await p.saveSettings()
         }),
       )
+  }
+
+  private renderReport(el: HTMLElement) {
+    const p = this.plugin
+    new Setting(el).setName('Report an issue').setHeading()
+    new Setting(el)
+      .setName('Diagnostics')
+      .setDesc(
+        'Versions, harness details and job status to paste into a bug report. It never includes prompts, job names, note content or your vault name, ' +
+          'and vault and home paths are replaced. Review it before sharing.',
+      )
+      .addButton((b) => b.setButtonText('Preview').onClick(() => void this.withDiagnostics((text) => new DiagnosticsModal(this.app, text).open())))
+      .addButton((b) =>
+        b.setButtonText('Copy').onClick(() =>
+          void this.withDiagnostics(async (text) => {
+            await navigator.clipboard.writeText(text)
+            new Notice('Diagnostics copied. Paste them into the issue.')
+          }),
+        ),
+      )
+    new Setting(el)
+      .setName('Open a GitHub issue')
+      .setDesc('Opens the bug report form with your versions filled in. Copy the diagnostics first and paste them into the form.')
+      .addButton((b) =>
+        b.setButtonText('Report a bug').setCta().onClick(() => {
+          const q = new URLSearchParams({
+            template: 'bug_report.yml',
+            plugin_version: p.manifest.version,
+            environment: `${process.platform} ${process.arch}, Obsidian ${apiVersion}`,
+          })
+          window.open(`${REPO_URL}/issues/new?${q}`)
+        }),
+      )
+  }
+
+  private async withDiagnostics(use: (text: string) => void | Promise<void>) {
+    try {
+      await use(await this.plugin.diagnostics())
+    } catch (e) {
+      new Notice(`Could not build diagnostics: ${(e as Error).message}`, 10000)
+    }
+  }
+}
+
+class DiagnosticsModal extends Modal {
+  constructor(app: App, private text: string) {
+    super(app)
+  }
+  onOpen() {
+    this.titleEl.setText('Diagnostics')
+    const area = this.contentEl.createEl('textarea', { text: this.text })
+    area.readOnly = true
+    area.rows = 18
+    area.style.width = '100%'
+    area.style.fontFamily = 'var(--font-monospace)'
+    new Setting(this.contentEl).addButton((b) => b.setButtonText('Close').onClick(() => this.close()))
+  }
+  onClose() {
+    this.contentEl.empty()
   }
 }
 

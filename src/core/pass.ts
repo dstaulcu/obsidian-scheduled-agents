@@ -44,11 +44,13 @@ export async function runPass(o: PassOptions): Promise<Array<{ job: JobConfig; r
     if (result.ok) {
       s.lastRun = o.now.toISOString()
       s.failures = 0
+      delete s.lastError
       const cost = result.cost !== undefined ? `, $${result.cost.toFixed(3)}` : ''
       const page = (result.outputPath ?? '').replace(/\.md$/, '').split('/').pop()
       await o.log(job, 'ok', `${result.seconds}s${cost} -> [[${page}]]`)
     } else {
       s.failures += 1
+      s.lastError = result.message
       if (s.failures >= o.maxRetries) {
         // give up until the next occurrence
         s.lastRun = o.now.toISOString()
