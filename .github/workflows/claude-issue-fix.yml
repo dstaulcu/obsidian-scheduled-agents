@@ -36,7 +36,9 @@ jobs:
             Add or update tests for behavior changes, and make sure `npm test` and `npm run build` pass.
             Do not edit anything under .github/, do not change versions, and do not widen the agent's tools
             or where the plugin may write. If the issue needs any of those, explain why in a comment instead.
-            Open a pull request into main that references the issue.
+            Push your work to a new branch and open a pull request into main with `gh pr create`.
+            The PR body must contain `Closes #${{ github.event.issue.number }}`.
+            Then comment on the issue with the PR link using `gh issue comment`.
           claude_args: |
             --max-turns 30
-            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(npm test:*),Bash(npm run build:*),Bash(npm run type:check:*),Bash(git:*)"
+            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(npm test:*),Bash(npm run build:*),Bash(npm run type:check:*),Bash(git:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh issue comment:*)"
