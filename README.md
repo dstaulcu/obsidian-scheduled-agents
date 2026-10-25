@@ -1,10 +1,12 @@
 # Scheduled Agents (Obsidian plugin)
 
-Run read-only agent prompts on a schedule from Obsidian's settings, and get review pages back. Results are written into your vault by the plugin, never by the agent. Edits an agent suggests (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo.
+Scheduled AI reports for your Obsidian vault. Define your own jobs (prompt, schedule and output folder) in Obsidian's settings, or use the built-in Tag Review and Daily Notes Digest. Results land in the plugin's own folder unless you redirect them, and suggested edits wait for your approval.
+
+An agent reads your notes; the plugin writes the results as review pages. Edits an agent suggests (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo.
 
 - **Desktop only.** Jobs spawn an agent harness you already have installed and logged in (Claude Code CLI today). Jobs run **while Obsidian is open**; a job missed while it was closed runs once at the next launch.
-- **Read-only agent.** The Claude executor gets `Read,Glob,Grep` only: no MCP, no shell, `dontAsk` permissions, user settings only, per-run budget cap and timeout. Each harness declares what it can enforce; a job is refused on a harness that cannot enforce read-only access.
-- **Writes are the plugin's.** By default output goes inside the plugin folder (for example `Scheduled Agents/2026-W43 Digest`), so nothing lands in a place you did not choose. To send output elsewhere, add that folder to **Allowed output folders** and change the job's output path. Output is never written into hidden folders.
+- **The agent only reads.** The Claude executor gets `Read,Glob,Grep` only: no MCP, no shell, `dontAsk` permissions, user settings only, per-run budget cap and timeout. Each harness declares what it can enforce; a job is refused on a harness that cannot enforce read-only access.
+- **Writes are the plugin's.** By default output goes inside the plugin folder (for example `Scheduled Agents/2026-W43 Digest`), so nothing lands in a place you did not choose. Each job has its own output path. To send output elsewhere, add that folder to **Allowed output folders** and change the job's output path. Output is never written into hidden folders.
 - **Settings** live in the plugin's `data.json`.
 
 ## Built-in jobs

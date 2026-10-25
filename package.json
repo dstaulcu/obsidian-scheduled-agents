@@ -1,7 +1,7 @@
 {
   "name": "scheduled-agents",
   "version": "0.1.0",
-  "description": "Scheduled, read-only agent jobs for your Obsidian vault.",
+  "description": "Scheduled AI agent jobs for your Obsidian vault: custom prompts and output folders, results written by the plugin, edits applied only after approval.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
