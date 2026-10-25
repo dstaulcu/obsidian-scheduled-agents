@@ -16,6 +16,7 @@
     "release:major": "node scripts/release.mjs major",
     "deploy": "node scripts/deploy.mjs --build",
     "reset:test": "node scripts/reset-test.mjs --deploy",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "tag": "node scripts/tag-release.mjs",
     "ship": "node scripts/ship.mjs",
     "ship:minor": "node scripts/ship.mjs minor",

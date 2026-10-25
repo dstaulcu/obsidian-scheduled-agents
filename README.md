@@ -2,6 +2,10 @@
 
 Scheduled AI reports for your Obsidian vault. Comes with built-in Tag Review and Daily Notes Digest jobs, and you can add your own in Obsidian's settings, each with its own prompt, schedule and output folder. Results land in the plugin's own folder unless you redirect them. Tag Review also proposes tag and vocabulary edits, which are applied only after you approve them.
 
+<!-- Demo GIFs: record per docs/DEMO.md, save as docs/hero.gif and docs/tag-review.gif, then uncomment.
+![Run a job and read the result](docs/hero.gif)
+-->
+
 An agent reads your notes; the plugin writes the results as review pages. Tag Review's suggested edits (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo. Other jobs only produce a report.
 
 - **Desktop only.** Jobs spawn an agent harness you already have installed and logged in (Claude Code CLI today). Jobs run **while Obsidian is open**; a job missed while it was closed runs once at the next launch.
@@ -16,6 +20,8 @@ Shipped disabled, always present (disable rather than delete; reset restores the
 - **Tag Review** reads a controlled-vocabulary note and your daily notes, then produces a report with an approve/reject panel for tag fixes and vocabulary changes.
   New installs get a starter glossary at `<plugin folder>/Tag Glossary.md` (facets `areas`, `projects`, `tools`, `techniques`; facets are just the headings in that note). While it has no tags, Tag Review runs in bootstrap mode and proposes a first vocabulary from the tags you already use, as edits you approve. Existing glossaries are used as they are: point **Tag vocabulary note** at yours.
 - **Daily Notes Digest** summarises the last seven days of daily notes. Daily-notes location and filename format come from Obsidian's Daily notes settings.
+
+<!-- ![Approve, apply and undo tag edits](docs/tag-review.gif) -->
 
 ## Requirements
 
