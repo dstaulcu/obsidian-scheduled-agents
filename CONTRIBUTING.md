@@ -68,3 +68,5 @@ A maintainer can have Claude Code draft a fix for an issue they have approved:
 3. Review it like any other PR. CI must pass, and a human merges. The workflow cannot edit `.github/`, bump versions or cut releases.
 
 Issue text is untrusted input. Read the issue before labeling it, and treat a Claude PR that widens agent tools or write locations as needing the same scrutiny as any hand-written one. The repo needs an `ANTHROPIC_API_KEY` Actions secret.
+
+Changes under `.github/` (workflows can use repository secrets) require approval from the code owner listed in `.github/CODEOWNERS`.
