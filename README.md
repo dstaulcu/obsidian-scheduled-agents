@@ -22,7 +22,7 @@ npm ci
 npm run release:minor   # or: npm run build
 ```
 
-Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/scheduled-agents/`, or put your vault path in `.deploy.json` (`{"vault": "<path>"}`) and run `npm run deploy`. Enable **Scheduled Agents** under Settings → Community plugins. Try it in a test vault first.
+Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/scheduled-agents/`, or copy `.deploy.example.json` to `.deploy.json` (gitignored), set `vault` (and `testVault` for `npm run reset:test`), and run `npm run deploy`. Enable **Scheduled Agents** under Settings → Community plugins. Try it in a test vault first.
 
 ## Development
 
