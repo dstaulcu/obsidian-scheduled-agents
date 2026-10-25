@@ -1,8 +1,8 @@
 # Scheduled Agents (Obsidian plugin)
 
-Scheduled AI reports for your Obsidian vault. Comes with built-in Tag Review and Daily Notes Digest jobs, and you can add your own in Obsidian's settings, each with its own prompt, schedule and output folder. Results land in the plugin's own folder unless you redirect them, and suggested edits wait for your approval.
+Scheduled AI reports for your Obsidian vault. Comes with built-in Tag Review and Daily Notes Digest jobs, and you can add your own in Obsidian's settings, each with its own prompt, schedule and output folder. Results land in the plugin's own folder unless you redirect them. Tag Review also proposes tag and vocabulary edits, which are applied only after you approve them.
 
-An agent reads your notes; the plugin writes the results as review pages. Edits an agent suggests (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo.
+An agent reads your notes; the plugin writes the results as review pages. Tag Review's suggested edits (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo. Other jobs only produce a report.
 
 - **Desktop only.** Jobs spawn an agent harness you already have installed and logged in (Claude Code CLI today). Jobs run **while Obsidian is open**; a job missed while it was closed runs once at the next launch.
 - **The agent only reads.** The Claude executor gets `Read,Glob,Grep` only: no MCP, no shell, `dontAsk` permissions, user settings only, per-run budget cap and timeout. Each harness declares what it can enforce; a job is refused on a harness that cannot enforce read-only access.
