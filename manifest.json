@@ -1,9 +1,9 @@
 {
-  "id": "brain-agent",
-  "name": "Brain Agent",
+  "id": "scheduled-agents",
+  "name": "Scheduled Agents",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Schedule read-only Claude Code prompts that write their results back into your vault.",
+  "description": "Run read-only agent prompts on a schedule and get review pages back, with edits you approve before anything changes.",
   "author": "David Staulcup",
   "isDesktopOnly": true
 }

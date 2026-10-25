@@ -38,7 +38,7 @@ export class FsVaultIO implements VaultIO {
   async writeAtomic(rel: string, content: string): Promise<void> {
     const full = this.abs(rel)
     await fs.promises.mkdir(path.dirname(full), { recursive: true })
-    const tmp = `${full}.brainagent.tmp`
+    const tmp = `${full}.tmp-write`
     await fs.promises.writeFile(tmp, content, 'utf8')
     await fs.promises.rename(tmp, full)
   }

@@ -1,19 +1,33 @@
-.brain-agent-editor .brain-agent-prompt {
+.scheduled-agents-editor .scheduled-agents-prompt {
   width: 100%;
   font-family: var(--font-monospace);
   resize: vertical;
 }
-.brain-agent-editor .brain-agent-prompt-setting {
+.scheduled-agents-editor .scheduled-agents-prompt-setting {
   border-bottom: none;
   padding-bottom: 0;
 }
-.brain-agent-editor .brain-agent-preview {
+.scheduled-agents-editor .scheduled-agents-preview {
   margin: -0.5em 0 0.75em;
 }
-.brain-agent-editor .brain-agent-error {
+.scheduled-agents-editor .scheduled-agents-error {
   color: var(--text-error);
   margin: 0.5em 0;
 }
-.brain-agent-editor .mod-warning {
+.scheduled-agents-editor .mod-warning {
   color: var(--text-error);
 }
+
+.ba-review { border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 8px; }
+.ba-review-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.ba-review-bar span { flex: 1; color: var(--text-muted); }
+.ba-review-item { padding: 6px 0; border-top: 1px solid var(--background-modifier-border); }
+.ba-review-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ba-review-title { font-weight: 600; }
+.ba-review-badge { font-size: var(--font-smaller); padding: 0 6px; border-radius: 8px; background: var(--background-modifier-hover); }
+.ba-review-badge.ba-applied { color: var(--text-success); }
+.ba-review-badge.ba-stale, .ba-review-error { color: var(--text-error); }
+.ba-review-diff { font-family: var(--font-monospace); font-size: var(--font-smaller); margin: 4px 0 0 24px; }
+.ba-del { color: var(--text-error); text-decoration: line-through; }
+.ba-ins { color: var(--text-success); }
+.ba-review-fm { margin: 4px 0 0 24px; color: var(--text-muted); }
