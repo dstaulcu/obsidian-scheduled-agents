@@ -16,7 +16,10 @@
     "release:major": "node scripts/release.mjs major",
     "deploy": "node scripts/deploy.mjs --build",
     "reset:test": "node scripts/reset-test.mjs --deploy",
-    "tag": "node scripts/tag-release.mjs"
+    "tag": "node scripts/tag-release.mjs",
+    "ship": "node scripts/ship.mjs",
+    "ship:minor": "node scripts/ship.mjs minor",
+    "ship:major": "node scripts/ship.mjs major"
   },
   "license": "MIT",
   "devDependencies": {
