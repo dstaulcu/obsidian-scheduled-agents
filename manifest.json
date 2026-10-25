@@ -1,7 +1,7 @@
 {
   "id": "scheduled-agents",
   "name": "Scheduled Agents",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minAppVersion": "1.4.0",
   "description": "Comes with Tag Review and Daily Notes Digest jobs, and you can add your own on a schedule. Results land in the plugin's own folder unless you redirect them. Tag Review's suggested edits are applied only after you approve them.",
   "author": "David Staulcup",
