@@ -1,0 +1,42 @@
+name: Claude issue fix
+
+# A maintainer applies the `claude-fix` label to an issue they have approved.
+# Claude Code then works on a branch and opens a pull request for human review.
+# Only users with triage access or above can apply labels, which is the approval gate.
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix:
+    if: github.event.label.name == 'claude-fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Secrets live in this environment, which only runs on main and waits for a required reviewer.
+    environment: claude
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          label_trigger: claude-fix
+          prompt: |
+            Fix the issue described in issue #${{ github.event.issue.number }}.
+            Follow CLAUDE.md and CONTRIBUTING.md. Keep the change small and focused.
+            Add or update tests for behavior changes, and make sure `npm test` and `npm run build` pass.
+            Do not edit anything under .github/, do not change versions, and do not widen the agent's tools
+            or where the plugin may write. If the issue needs any of those, explain why in a comment instead.
+            Open a pull request into main that references the issue.
+          claude_args: |
+            --max-turns 30
+            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(npm test:*),Bash(npm run build:*),Bash(npm run type:check:*),Bash(git:*)"

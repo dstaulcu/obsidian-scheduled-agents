@@ -1,0 +1,3 @@
+# Workflow changes can run with repository secrets, so the maintainer must approve them.
+# Enforced by the main ruleset's "Require review from Code Owners" option.
+/.github/ @dstaulcu
