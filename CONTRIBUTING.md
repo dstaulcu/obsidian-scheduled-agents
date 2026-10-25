@@ -55,9 +55,17 @@ Test against a throwaway vault, never your real one. The reset script deletes th
 
 CI (`.github/workflows/ci.yml`) runs tests and a build on every PR. Releases are published by `.github/workflows/release.yml` when a version tag is pushed.
 
-1. On a branch, run `npm run release` (or `release:minor` / `release:major`). It runs the tests, bumps the version in every file that carries it, and builds. Don't edit versions by hand.
-2. Open a PR with the bump and merge it.
-3. On an up-to-date `main`, run `npm run tag`. It tags the manifest version (no `v` prefix, as Obsidian requires) and pushes it; `--dry-run` previews. The workflow then builds and attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
+From a clean, up-to-date `main`, run one command:
+
+```bash
+npm run ship          # patch; or ship:minor / ship:major
+```
+
+It runs the tests, bumps the version in every file that carries it, builds, opens a `release/<version>` PR, waits for CI, asks for confirmation, merges with your admin bypass, and tags the version. The tag (no `v` prefix, as Obsidian requires) triggers the workflow, which attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release. Don't edit versions by hand.
+
+- `npm run ship -- --no-merge` stops after opening the PR so someone else can review it. Once it is merged, run `npm run ship -- --finish` to pull `main` and tag.
+- `npm run ship -- --dry-run` checks preconditions and prints the plan.
+- The individual steps still exist: `npm run release[:minor|:major]` (bump and build only) and `npm run tag`.
 
 ## Claude-assisted fixes
 
