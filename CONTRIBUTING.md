@@ -58,3 +58,15 @@ CI (`.github/workflows/ci.yml`) runs tests and a build on every PR. Releases are
 1. On a branch, run `npm run release` (or `release:minor` / `release:major`). It runs the tests, bumps the version in every file that carries it, and builds. Don't edit versions by hand.
 2. Open a PR with the bump and merge it.
 3. On an up-to-date `main`, run `npm run tag`. It tags the manifest version (no `v` prefix, as Obsidian requires) and pushes it; `--dry-run` previews. The workflow then builds and attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
+
+## Claude-assisted fixes
+
+A maintainer can have Claude Code draft a fix for an issue they have approved:
+
+1. Apply the `claude-fix` label to the issue. Only people with triage access or above can, which is the approval step.
+2. `.github/workflows/claude-issue-fix.yml` runs Claude Code, which pushes a branch and opens a PR referencing the issue.
+3. Review it like any other PR. CI must pass, and a human merges. The workflow cannot edit `.github/`, bump versions or cut releases.
+
+Issue text is untrusted input. Read the issue before labeling it, and treat a Claude PR that widens agent tools or write locations as needing the same scrutiny as any hand-written one. The repo needs an `ANTHROPIC_API_KEY` Actions secret.
+
+Changes under `.github/` (workflows can use repository secrets) require approval from the code owner listed in `.github/CODEOWNERS`.
