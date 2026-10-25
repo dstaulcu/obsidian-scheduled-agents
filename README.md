@@ -17,14 +17,32 @@ Shipped disabled, always present (disable rather than delete; reset restores the
   New installs get a starter glossary at `<plugin folder>/Tag Glossary.md` (facets `areas`, `projects`, `tools`, `techniques`; facets are just the headings in that note). While it has no tags, Tag Review runs in bootstrap mode and proposes a first vocabulary from the tags you already use, as edits you approve. Existing glossaries are used as they are: point **Tag vocabulary note** at yours.
 - **Daily Notes Digest** summarises the last seven days of daily notes. Daily-notes location and filename format come from Obsidian's Daily notes settings.
 
-## Install (from source)
+## Requirements
+
+- Obsidian 1.4.0 or newer, **desktop** (Windows, macOS or Linux). Mobile is not supported.
+- The [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI installed and logged in. Jobs run it as a subprocess, so confirm `claude` works in a terminal first. If Obsidian cannot find it, set its path in the plugin's settings.
+- Node.js 20+ only if you build from source.
+
+## Install
+
+From a release (no build tools needed):
+
+1. Open the [latest release](../../releases/latest) and download `main.js`, `manifest.json` and `styles.css`.
+2. Put them in `<vault>/.obsidian/plugins/scheduled-agents/` (create the folder if needed).
+3. Restart Obsidian, then enable **Scheduled Agents** under Settings → Community plugins.
+
+Prefer automatic updates? [BRAT](https://github.com/TfTHacker/obsidian42-brat) can install and update the plugin from this repository's releases. For a private repository BRAT needs a GitHub token with read access.
+
+Try it in a test vault first.
+
+From source:
 
 ```bash
 npm ci
-npm run release:minor   # or: npm run build
+npm run build           # -> main.js
 ```
 
-Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/scheduled-agents/`, or copy `.deploy.example.json` to `.deploy.json` (gitignored), set `vault` (and `testVault` for `npm run reset:test`), and run `npm run deploy`. Enable **Scheduled Agents** under Settings → Community plugins. Try it in a test vault first.
+Copy `main.js`, `manifest.json` and `styles.css` as above, or copy `.deploy.example.json` to `.deploy.json` (gitignored), set `vault` (and `testVault` for `npm run reset:test`), and run `npm run deploy`.
 
 ## Development
 
