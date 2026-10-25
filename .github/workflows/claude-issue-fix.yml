@@ -12,6 +12,8 @@ jobs:
     if: github.event.label.name == 'claude-fix'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Secrets live in this environment, which only runs on main and waits for a required reviewer.
+    environment: claude
     permissions:
       contents: write
       pull-requests: write
