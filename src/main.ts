@@ -1,8 +1,10 @@
 import * as fs from 'fs'
 import * as nodePath from 'path'
-import { FileSystemAdapter, FuzzySuggestModal, Notice, normalizePath, Plugin, TFile } from 'obsidian'
+import * as os from 'os'
+import { apiVersion, FileSystemAdapter, FuzzySuggestModal, Notice, normalizePath, Plugin, TFile } from 'obsidian'
 import { formatLogRow, LogStatus, runPass, RUN_LOG_HEADER } from './core/pass'
 import { LOG_TAG } from './brand'
+import { buildDiagnostics } from './core/diagnostics'
 import { BUILTINS, ensureBuiltins } from './core/builtinJobs'
 import { readDailyNotesConfig } from './core/dailyNotes'
 import { runJob, RunSettings } from './core/runner'
@@ -193,6 +195,49 @@ export default class AgentPlugin extends Plugin {
         allowedFolders: [...new Set([this.settings.pluginFolder, ...this.settings.allowedOutputFolders])],
       },
     }
+  }
+
+  /** Markdown diagnostics for a bug report; see core/diagnostics.ts for what is (and is not) included. */
+  async diagnostics(): Promise<string> {
+    const s = this.settings
+    const id = s.executor
+    const desc = getDescriptor(id)
+    const harnessPath = s.harnesses[id]?.path ?? ''
+    const harnessVersion = desc ? await desc.getVersion(s.harnesses[id]) : 'unknown harness'
+    const inPluginFolder = (out: string) => out.startsWith('{{pluginFolder}}') || out.startsWith(s.pluginFolder + '/')
+    return buildDiagnostics({
+      pluginVersion: this.manifest.version,
+      obsidianVersion: apiVersion,
+      platform: process.platform,
+      arch: process.arch,
+      harnessId: id,
+      harnessPath,
+      harnessVersion,
+      capabilities: desc?.capabilities ?? { enforcesReadOnly: false, supportsBudget: false, supportsSkills: false, reportsCost: false },
+      schedulerEnabled: s.schedulerEnabled,
+      pollSeconds: s.pollSeconds,
+      defaultTimeoutMinutes: s.defaultTimeoutMinutes,
+      maxBudgetUsd: s.maxBudgetUsd,
+      maxRetries: s.maxRetries,
+      pluginFolder: s.pluginFolder,
+      jobs: s.jobs.map((j) => ({
+        builtin: j.builtin,
+        enabled: j.enabled,
+        schedule: j.schedule,
+        day: j.day,
+        at: j.at,
+        mode: j.mode,
+        harness: j.harness,
+        hasCustomModel: !!j.model,
+        skillCount: j.skills.length,
+        outputInPluginFolder: inPluginFolder(j.output),
+        lastRun: s.state[j.id]?.lastRun,
+        failures: s.state[j.id]?.failures ?? 0,
+        lastError: s.state[j.id]?.lastError,
+      })),
+      vaultPath: this.vaultPath,
+      homeDir: os.homedir(),
+    })
   }
 
   private async writeLog(job: Pick<JobConfig, 'name'> | { name: string }, status: LogStatus, detail: string) {

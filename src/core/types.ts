@@ -24,6 +24,8 @@ export interface JobState {
   firstSeen?: string
   lastRun?: string
   failures: number
+  /** Message of the most recent failed attempt; cleared on success. Used by the issue report. */
+  lastError?: string
 }
 
 export interface RunResult {

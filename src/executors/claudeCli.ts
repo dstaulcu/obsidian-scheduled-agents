@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { parseSkills } from '../core/validate'
 import { ExecRequest, ExecResult, ExecutorCapabilities, JobExecutor } from './types'
 
@@ -84,6 +84,16 @@ function runProcess(claudePath: string, args: string[], req: ExecRequest): Promi
 
     child.stdin.on('error', () => undefined) // EPIPE if the process dies early
     child.stdin.end(req.prompt, 'utf8')
+  })
+}
+
+/** First line of `claude --version`, or a short reason it could not be read. */
+export function getClaudeVersion(claudePath: string): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(claudePath, ['--version'], { timeout: 5000, windowsHide: true }, (err, stdout) => {
+      if (err) resolve(`unavailable (${err.message.split('\n')[0]})`)
+      else resolve(stdout.trim().split('\n')[0] || 'unknown')
+    })
   })
 }
 
