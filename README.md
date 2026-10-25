@@ -26,6 +26,8 @@ Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/s
 
 ## Development
 
+Contributions go through pull requests; see [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
+
 ```bash
 npm test                          # jest: schedule, paths, runner, tag-review edits
 npm run build                     # tsc --noEmit + production bundle -> main.js
