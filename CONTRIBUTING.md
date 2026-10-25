@@ -24,11 +24,32 @@
 
 ## Trying changes in Obsidian
 
-Use a throwaway vault, never your real one.
+Test against a throwaway vault, never your real one. The reset script deletes the plugin's settings and folders.
 
-1. Put the vault path in `.deploy.json` (gitignored): `{"vault": "<path>"}`.
-2. `npm run deploy` builds and copies the plugin into the vault. Reload Obsidian or toggle the plugin.
-3. `npm run reset:test` returns a marked test vault to fresh-install state (read the header of `scripts/reset-test.mjs` first, and close the vault in Obsidian before running it).
+**One-time setup**
+
+1. Create a new, empty vault in Obsidian and open it once, so it has a `.obsidian` folder. Close it afterwards.
+2. Create `.deploy.json` (gitignored) in the repo root:
+   ```json
+   { "vault": "/path/to/your/real/vault", "testVault": "/path/to/the/throwaway/vault" }
+   ```
+   `vault` is only used by `npm run deploy`. The `OBSIDIAN_VAULT` and `OBSIDIAN_TEST_VAULT` environment variables work instead of the file, and a path argument overrides both.
+3. Mark the throwaway vault once: `node scripts/reset-test.mjs --mark`. The reset script refuses to touch a vault without this marker, which guards against pointing it at the wrong vault.
+4. Install and log in to the Claude Code CLI. It is the harness the jobs spawn, and a run fails without it.
+
+**Test loop**
+
+1. Close the vault in Obsidian. A running plugin rewrites its settings, which would undo the reset.
+2. `npm run reset:test` returns the vault to a fresh-install state and `npm run reset:test -- --deploy` also builds and installs the current code. Add `--dry-run` to preview.
+3. Open the vault, enable **Scheduled Agents** under Community plugins, and run a job from the plugin's settings. Jobs only run while Obsidian is open.
+4. Check the review page the job wrote. For Tag Review, also try approving and undoing an edit in the panel.
+
+**What reset does**
+
+- Removes the plugin's `data.json`, its plugin folder, and the old default output folder (`Weekly Summaries`). Notes elsewhere are never deleted, and hidden folders are skipped.
+- Re-enables the built-in jobs, which a real install ships disabled. Pass `--keep-disabled` to match a real first install.
+- Sets today's daily note to "Hello world!" (only when the daily-note format is `YYYY-MM-DD`). Pass `--keep-daily` to leave it alone.
+- `--keep-output` keeps the `Weekly Summaries` folder.
 
 ## Releases
 
