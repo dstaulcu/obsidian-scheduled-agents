@@ -10,7 +10,9 @@
    npm test
    npm run build
    ```
-4. Push the branch and open a pull request into `main`. Say what changed and why, and how you tested it (a test vault run counts; see below).
+4. Push the branch and open a pull request into `main`, from the browser or with the GitHub CLI:
+   `git push -u origin <branch> && gh pr create --base main --fill`
+   Say what changed and why, and how you tested it (a test vault run counts; see below).
 5. Another contributor reviews. Address comments with new commits, then merge. Prefer squash merge to keep `main` history readable.
 6. Don't push directly to `main`, except for trivial doc fixes.
 
