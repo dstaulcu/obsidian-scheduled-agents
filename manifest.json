@@ -3,7 +3,7 @@
   "name": "Scheduled Agents",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Schedule your own AI agent jobs, or use the built-in Tag Review and Daily Notes Digest. Results land in the plugin's own folder unless you redirect them; suggested edits wait for your approval.",
+  "description": "Comes with Tag Review and Daily Notes Digest jobs, and you can add your own on a schedule. Results land in the plugin's own folder unless you redirect them; suggested edits wait for your approval.",
   "author": "David Staulcup",
   "isDesktopOnly": true
 }

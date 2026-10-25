@@ -1,6 +1,6 @@
 # Scheduled Agents (Obsidian plugin)
 
-Scheduled AI reports for your Obsidian vault. Define your own jobs (prompt, schedule and output folder) in Obsidian's settings, or use the built-in Tag Review and Daily Notes Digest. Results land in the plugin's own folder unless you redirect them, and suggested edits wait for your approval.
+Scheduled AI reports for your Obsidian vault. Comes with built-in Tag Review and Daily Notes Digest jobs, and you can add your own in Obsidian's settings, each with its own prompt, schedule and output folder. Results land in the plugin's own folder unless you redirect them, and suggested edits wait for your approval.
 
 An agent reads your notes; the plugin writes the results as review pages. Edits an agent suggests (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo.
 
