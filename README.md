@@ -31,8 +31,6 @@ From a release (no build tools needed):
 2. Put them in `<vault>/.obsidian/plugins/scheduled-agents/` (create the folder if needed).
 3. Restart Obsidian, then enable **Scheduled Agents** under Settings → Community plugins.
 
-Prefer automatic updates? [BRAT](https://github.com/TfTHacker/obsidian42-brat) can install and update the plugin from this repository's releases. For a private repository BRAT needs a GitHub token with read access.
-
 Try it in a test vault first.
 
 From source:
