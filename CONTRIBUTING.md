@@ -53,4 +53,8 @@ Test against a throwaway vault, never your real one. The reset script deletes th
 
 ## Releases
 
-`npm run release` (or `release:minor` / `release:major`) runs tests, bumps the version in every file that carries it, and builds. Don't edit versions by hand.
+CI (`.github/workflows/ci.yml`) runs tests and a build on every PR. Releases are published by `.github/workflows/release.yml` when a version tag is pushed.
+
+1. On a branch, run `npm run release` (or `release:minor` / `release:major`). It runs the tests, bumps the version in every file that carries it, and builds. Don't edit versions by hand.
+2. Open a PR with the bump and merge it.
+3. On an up-to-date `main`, run `npm run tag`. It tags the manifest version (no `v` prefix, as Obsidian requires) and pushes it; `--dry-run` previews. The workflow then builds and attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.

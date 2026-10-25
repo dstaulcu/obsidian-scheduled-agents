@@ -15,7 +15,8 @@
     "release:minor": "node scripts/release.mjs minor",
     "release:major": "node scripts/release.mjs major",
     "deploy": "node scripts/deploy.mjs --build",
-    "reset:test": "node scripts/reset-test.mjs --deploy"
+    "reset:test": "node scripts/reset-test.mjs --deploy",
+    "tag": "node scripts/tag-release.mjs"
   },
   "license": "MIT",
   "devDependencies": {
