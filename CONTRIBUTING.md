@@ -40,7 +40,7 @@ Test against a throwaway vault, never your real one. The reset script deletes th
 **Test loop**
 
 1. Close the vault in Obsidian. A running plugin rewrites its settings, which would undo the reset.
-2. `npm run reset:test` returns the vault to a fresh-install state and `npm run reset:test -- --deploy` also builds and installs the current code. Add `--dry-run` to preview.
+2. `npm run reset:test` returns the vault to a fresh-install state, then builds and installs the current code. `node scripts/reset-test.mjs` resets without deploying. Add `--dry-run` to preview (`npm run reset:test -- --dry-run`).
 3. Open the vault, enable **Scheduled Agents** under Community plugins, and run a job from the plugin's settings. Jobs only run while Obsidian is open.
 4. Check the review page the job wrote. For Tag Review, also try approving and undoing an edit in the panel.
 
