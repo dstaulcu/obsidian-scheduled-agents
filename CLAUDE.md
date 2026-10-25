@@ -20,6 +20,7 @@ npm run ship[:minor|:major]     # whole release: bump, PR, wait for CI, admin-me
 npm run release[:minor|:major]  # test, bump version everywhere, build
 npm run bump[:minor|:major]     # version bump only
 npm run reset:test              # reset a marked throwaway test vault to fresh-install state (scripts/reset-test.mjs; read its header first, close the vault in Obsidian before running)
+npm run seed:demo               # write six harmless daily notes into the marked test vault for recording demos (docs/DEMO.md)
 ```
 
 ## Architecture
