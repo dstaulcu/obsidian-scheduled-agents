@@ -16,6 +16,7 @@ npm run type:check              # tsc --noEmit
 npm run build                   # tsc --noEmit + production esbuild bundle -> main.js
 npm run dev                     # esbuild watch
 npm run deploy                  # build + copy into the vault in .deploy.json ({"vault": "<path>"})
+npm run ship[:minor|:major]     # whole release: bump, PR, wait for CI, admin-merge, tag (see CONTRIBUTING.md)
 npm run release[:minor|:major]  # test, bump version everywhere, build
 npm run bump[:minor|:major]     # version bump only
 npm run reset:test              # reset a marked throwaway test vault to fresh-install state (scripts/reset-test.mjs; read its header first, close the vault in Obsidian before running)
