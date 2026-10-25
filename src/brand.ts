@@ -2,5 +2,7 @@
 export const DEFAULT_PLUGIN_FOLDER = 'Scheduled Agents'
 /** Folder used by installs that predate the plugin-folder setting; they keep it so nothing moves. */
 export const LEGACY_PLUGIN_FOLDER = 'BrainAgent'
+/** Where issue reports go. */
+export const REPO_URL = 'https://github.com/dstaulcu/obsidian-scheduled-agents'
 /** Prefix for console output. */
 export const LOG_TAG = 'scheduled-agents'

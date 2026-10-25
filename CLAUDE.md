@@ -28,6 +28,7 @@ npm run reset:test              # reset a marked throwaway test vault to fresh-i
 - `src/executors/` defines the `JobExecutor` interface plus declared `ExecutorCapabilities` (`enforcesReadOnly`, `supportsBudget`, `supportsSkills`, `reportsCost`). The runner refuses a job on a harness that cannot enforce read-only access, so new harnesses must declare capabilities honestly. `claudeCli.ts` spawns the CLI with `Read,Glob,Grep` only, `dontAsk` permissions, no MCP/shell; `registry.ts` selects executors.
 - `src/tagreview/` is the Tag Review feature: the agent emits proposed edits, `edits.ts` parses them, `vocab.ts`/`apply.ts` validate and apply them (with undo) only after user approval in the panel (`panel.ts`); `scaffold.ts` creates the starter glossary.
 - `src/ui/` holds the settings tab and job editor modal; `src/main.ts` wires scheduling, settings and the above together; settings persist in the plugin's `data.json`.
+- `core/diagnostics.ts` builds the "Report an issue" text (settings tab). It takes a plain snapshot and must never include prompts, job names, note content or vault paths; `tests/diagnostics.test.ts` guards this. Issue forms live in `.github/ISSUE_TEMPLATE/`.
 - Prompts and output paths are templates (`core/templates.ts`) with variables such as `{{dailyNotes*}}` and brand vars (`src/brand.ts`, `BrandVars` in `runner.ts`). Built-in job definitions live in `core/builtinJobs.ts`.
 
 ## Invariants to preserve
