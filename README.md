@@ -58,6 +58,10 @@ npm run deploy                    # build and copy into the vault in .deploy.jso
 
 Layout: `src/core` is pure logic (no Obsidian imports, unit-tested), `src/executors` holds the harness interface, capability profile and registry, `src/tagreview` the edit parser, validator and apply engine, `src/ui` the settings tab and job editor, `src/brand.ts` the product-name defaults, `src/main.ts` the plugin wiring.
 
+## Credits
+
+Built with [Claude Code](https://docs.claude.com/en/docs/claude-code) by Anthropic. Claude Code is the agent harness the jobs run, and it also helps develop this plugin: maintainers can have it draft fixes for approved issues (see [CONTRIBUTING.md](CONTRIBUTING.md#claude-assisted-fixes)).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
