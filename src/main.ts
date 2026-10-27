@@ -287,13 +287,13 @@ export default class AgentPlugin extends Plugin {
         maxRetries: this.settings.maxRetries,
         force: opts.force,
         onlyId: opts.onlyId,
-        run: (job, now) => {
+        run: (job, now, since) => {
           const id = this.harnessIdFor(job)
           const desc = getDescriptor(id)
           if (!desc) return Promise.resolve({ ok: false, message: `Unknown harness '${id}'`, seconds: 0 })
           this.setStatus(`running ${job.name}…`)
           const executor = desc.create(() => this.settings.harnesses[id])
-          return runJob(job, now, { settings: this.runSettings(id), io, executor })
+          return runJob(job, now, { settings: this.runSettings(id), io, executor }, since)
         },
         log: (job, status, detail) => this.writeLog(job, status, detail),
         save: () => this.saveSettings(),

@@ -11,7 +11,8 @@ export interface PassOptions {
   /** Run regardless of schedule / enabled flag (optionally for one job id). */
   force?: boolean
   onlyId?: string
-  run: (job: JobConfig, now: Date) => Promise<RunResult>
+  /** `since` is the start time of the job's last successful run (ISO), if any. */
+  run: (job: JobConfig, now: Date, since?: string) => Promise<RunResult>
   log: (job: JobConfig, status: LogStatus, detail: string) => Promise<void>
   save: () => Promise<void>
 }
@@ -39,10 +40,11 @@ export async function runPass(o: PassOptions): Promise<Array<{ job: JobConfig; r
     }
     if (!due) continue
 
-    const result = await o.run(job, o.now)
+    const result = await o.run(job, o.now, s.lastSuccess)
     ran.push({ job, result })
     if (result.ok) {
       s.lastRun = o.now.toISOString()
+      s.lastSuccess = s.lastRun
       s.failures = 0
       delete s.lastError
       const cost = result.cost !== undefined ? `, $${result.cost.toFixed(3)}` : ''
