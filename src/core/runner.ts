@@ -2,7 +2,7 @@ import { checkCapabilities, JobExecutor } from '../executors/types'
 import { DEFAULT_PLUGIN_FOLDER } from '../brand'
 import { DailyNotesConfig, dailyNotesVars, DEFAULT_DAILY_NOTES } from './dailyNotes'
 import { expandTemplate, fmtDate, fmtStamp, fmtTime } from './templates'
-import { JobConfig, MODES, RunResult } from './types'
+import { JobConfig, MODES, RunResult, ScheduleKind } from './types'
 import { resolveVaultPath, PathRules } from './vaultPath'
 import { VaultIO } from './vaultIO'
 
@@ -37,9 +37,26 @@ export interface BrandVars {
   bootstrap: string
 }
 
-const vars = (s: { dailyNotes?: DailyNotesConfig; brand?: BrandVars }) => ({
+/** How far back a job with no successful run yet looks, by schedule. */
+const FALLBACK_LOOKBACK_MS: Record<ScheduleKind, number> = {
+  hourly: 3_600_000,
+  daily: 86_400_000,
+  weekly: 7 * 86_400_000,
+  monthly: 31 * 86_400_000,
+}
+
+/** {{lastRun}}: start of the last successful run, else one schedule period before `now`. */
+function lastRunVars(job: JobConfig, now: Date, since?: string): Record<string, string> {
+  const t = since ? Date.parse(since) : NaN
+  const known = !Number.isNaN(t)
+  const from = known ? new Date(t) : new Date(now.getTime() - (FALLBACK_LOOKBACK_MS[job.schedule] ?? FALLBACK_LOOKBACK_MS.daily))
+  return { lastRun: fmtStamp(from), lastRunKnown: String(known) }
+}
+
+const vars = (s: { dailyNotes?: DailyNotesConfig; brand?: BrandVars }, job: JobConfig, now: Date, since?: string) => ({
   ...dailyNotesVars(s.dailyNotes ?? DEFAULT_DAILY_NOTES),
   ...(s.brand ?? DEFAULT_BRAND),
+  ...lastRunVars(job, now, since),
 })
 
 export interface RunDeps {
@@ -48,7 +65,13 @@ export interface RunDeps {
   executor: JobExecutor
 }
 
-export function buildPrompt(job: JobConfig, now: Date, vault: string, s?: { dailyNotes?: DailyNotesConfig; brand?: BrandVars }): string {
+export function buildPrompt(
+  job: JobConfig,
+  now: Date,
+  vault: string,
+  s?: { dailyNotes?: DailyNotesConfig; brand?: BrandVars },
+  since?: string,
+): string {
   const today = now.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -61,16 +84,16 @@ export function buildPrompt(job: JobConfig, now: Date, vault: string, s?: { dail
     'with no preamble or commentary. Link to vault notes with [[wikilinks]].',
     '',
   ].join('\n')
-  return preamble + '\n' + expandTemplate(job.prompt, now, vault, vars(s ?? {}))
+  return preamble + '\n' + expandTemplate(job.prompt, now, vault, vars(s ?? {}, job, now, since))
 }
 
 /** Resolve where a job would write (also used for validation and previews). */
-export function resolveOutput(job: JobConfig, now: Date, s: RunSettings): string {
-  return resolveVaultPath(expandTemplate(job.output, now, s.vaultPath, vars(s)), s.rules)
+export function resolveOutput(job: JobConfig, now: Date, s: RunSettings, since?: string): string {
+  return resolveVaultPath(expandTemplate(job.output, now, s.vaultPath, vars(s, job, now, since)), s.rules)
 }
 
 /** Run one job through the executor and write its result into the vault. Never throws. */
-export async function runJob(job: JobConfig, now: Date, deps: RunDeps): Promise<RunResult> {
+export async function runJob(job: JobConfig, now: Date, deps: RunDeps, since?: string): Promise<RunResult> {
   const { settings: s, io, executor } = deps
   const started = Date.now()
   const secs = () => Math.round((Date.now() - started) / 100) / 10
@@ -78,11 +101,11 @@ export async function runJob(job: JobConfig, now: Date, deps: RunDeps): Promise<
     if (!MODES.includes(job.mode)) throw new Error(`Unknown mode '${job.mode}'`)
     const unfit = checkCapabilities(job, executor.capabilities)
     if (unfit) throw new Error(unfit)
-    let outPath = resolveOutput(job, now, s)
+    let outPath = resolveOutput(job, now, s, since)
     const timeoutMin = job.timeoutMinutes > 0 ? job.timeoutMinutes : s.defaultTimeoutMinutes
 
     const r = await executor.execute({
-      prompt: buildPrompt(job, now, s.vaultPath, s),
+      prompt: buildPrompt(job, now, s.vaultPath, s, since),
       cwd: s.vaultPath,
       model: job.model.trim() || s.defaultModel,
       timeoutMs: timeoutMin * 60_000,

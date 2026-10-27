@@ -23,6 +23,8 @@ export interface JobConfig {
 export interface JobState {
   firstSeen?: string
   lastRun?: string
+  /** Start time of the last successful run; advances only on success. Exposed to prompts as {{lastRun}}. */
+  lastSuccess?: string
   failures: number
   /** Message of the most recent failed attempt; cleared on success. Used by the issue report. */
   lastError?: string

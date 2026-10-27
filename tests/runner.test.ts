@@ -87,6 +87,16 @@ describe('runJob', () => {
     expect(r2.message).toMatch(/skills/)
     expect(ex.calls).toHaveLength(0)
   })
+  it('expands {{lastRun}} from the last success, else one schedule period back', async () => {
+    const j = { ...job, prompt: 'since {{lastRun}} known={{lastRunKnown}}' }
+    const ex = new FakeExecutor([])
+    await runJob(j, now, deps(ex), new Date(2026, 9, 21, 6, 0, 0).toISOString())
+    expect(ex.calls[0].prompt).toContain('since 2026-10-21T06:00:00 known=true')
+    await runJob(j, now, deps(ex))
+    expect(ex.calls[1].prompt).toContain('since 2026-10-15T08:30:00 known=false') // weekly job: 7 days back
+    await runJob({ ...j, schedule: 'daily' }, now, deps(ex), 'garbage')
+    expect(ex.calls[2].prompt).toContain('since 2026-10-21T08:30:00 known=false')
+  })
   it('surfaces executor failure and writes nothing', async () => {
     const r = await runJob(job, now, deps(new FakeExecutor([{ ok: false, text: '', error: 'boom' }])))
     expect(r).toMatchObject({ ok: false, message: 'boom' })
@@ -133,6 +143,26 @@ describe('runPass', () => {
     await runPass(opts)
     expect(logs).toEqual(['failed: attempt 1/3: a', 'failed: attempt 2/3: b', 'gave-up: c'])
     expect(await runPass(opts)).toHaveLength(0)
+  })
+  it('advances lastSuccess only on success and hands the previous value to run', async () => {
+    const prior = '2026-10-18T06:00:00.000Z'
+    const state: Record<string, JobState> = { j1: { firstSeen: '2026-10-01T09:00:00', lastSuccess: prior, failures: 0 } }
+    const seen: Array<string | undefined> = []
+    const { opts } = mk([{ ok: false, message: 'a' }, { ok: false, message: 'b' }, { ok: false, message: 'c' }, { ok: true }], state, {
+      run: async (_j: JobConfig, _n: Date, since?: string) => {
+        seen.push(since)
+        return { ok: seen.length === 4, message: 'x', seconds: 1, outputPath: 'Weekly Summaries/x.md' }
+      },
+    })
+    await runPass(opts)
+    await runPass(opts)
+    await runPass(opts) // third failure gives up: lastRun advances, lastSuccess must not
+    expect(state.j1.lastRun).toBe(now.toISOString())
+    expect(state.j1.lastSuccess).toBe(prior)
+    const forced = { ...opts, force: true, onlyId: 'j1' }
+    await runPass(forced)
+    expect(seen).toEqual([prior, prior, prior, prior])
+    expect(state.j1.lastSuccess).toBe(now.toISOString())
   })
   it('skips disabled jobs unless forced, and force ignores schedule', async () => {
     const state: Record<string, JobState> = { j1: { firstSeen: new Date().toISOString(), failures: 0 } }
