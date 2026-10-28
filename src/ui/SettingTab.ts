@@ -7,6 +7,7 @@ import { getLatestOccurrence, parseStamp } from '../core/schedule'
 import { JobConfig } from '../core/types'
 import { fmtDate, fmtTime } from '../core/templates'
 import { resetBuiltin } from '../core/builtinJobs'
+import { getToken, hasSecretStorage, importGlossary, setToken } from '../glossary/controller'
 import { EXECUTORS } from '../executors/registry'
 import { newJob } from '../settings'
 import { JobEditorModal } from './JobEditorModal'
@@ -26,6 +27,7 @@ export class AgentSettingTab extends PluginSettingTab {
     containerEl.empty()
     this.renderJobs(containerEl)
     this.renderGeneral(containerEl)
+    this.renderGlossary(containerEl)
     this.renderReport(containerEl)
   }
 
@@ -223,6 +225,61 @@ export class AgentSettingTab extends PluginSettingTab {
           await p.saveSettings()
         }),
       )
+  }
+
+  private renderGlossary(el: HTMLElement) {
+    const p = this.plugin
+    const g = p.settings.glossary
+    new Setting(el).setName('Tag glossary').setHeading()
+    const save = async () => p.saveSettings()
+    new Setting(el)
+      .setName('Glossary repo URL')
+      .setDesc('HTTPS URL of the shared tag glossary repo, e.g. https://github.com/owner/tag-glossary. Read-only: nothing is pushed.')
+      .addText((t) => t.setValue(g.repoUrl).onChange(async (v) => { g.repoUrl = v.trim(); await save() }))
+    new Setting(el)
+      .setName('Branch or tag')
+      .addText((t) => t.setPlaceholder('main').setValue(g.ref).onChange(async (v) => { g.ref = v.trim() || 'main'; await save() }))
+    const dest = new Setting(el)
+      .setName('Destination folder')
+      .setDesc('Vault folder the glossary notes are imported into.')
+    dest.addText((t) => {
+      const listId = 'scheduled-agents-folders'
+      const list = el.createEl('datalist', { attr: { id: listId } })
+      for (const f of p.app.vault.getAllFolders(false)) if (f.path !== '/') list.createEl('option', { value: f.path })
+      t.inputEl.setAttr('list', listId)
+      t.setValue(g.destFolder).onChange(async (v) => { g.destFolder = v.trim(); await save() })
+    })
+    new Setting(el)
+      .setName('Fetch method')
+      .setDesc('Anonymous HTTPS suits public repos. Git uses the git credentials already on this computer. A token is a fallback.')
+      .addDropdown((d) =>
+        d
+          .addOptions({ https: 'Anonymous HTTPS', git: 'Local git', token: 'Access token' })
+          .setValue(g.authMethod)
+          .onChange(async (v) => { g.authMethod = v as typeof g.authMethod; await save(); this.display() }),
+      )
+    if (g.authMethod === 'token') {
+      const secure = hasSecretStorage(p)
+      new Setting(el)
+        .setName('Access token')
+        .setDesc(
+          secure
+            ? 'Read-only scope. Kept in Obsidian secret storage.'
+            : 'Read-only scope. This Obsidian version has no secret storage, so the token is saved as plain text in the plugin data.json. Exclude that file from Git sync.',
+        )
+        .addText((t) => {
+          t.inputEl.type = 'password'
+          t.setValue(getToken(p)).onChange(async (v) => setToken(p, v.trim()))
+        })
+    }
+    new Setting(el)
+      .setName('Check for updates on startup')
+      .setDesc('Shows a notice when the glossary has changes. Never writes anything.')
+      .addToggle((t) => t.setValue(g.checkOnStartup).onChange(async (v) => { g.checkOnStartup = v; await save() }))
+    new Setting(el)
+      .setName('Import / update')
+      .setDesc('Fetches the glossary and shows a preview. Nothing is written until you apply it.')
+      .addButton((b) => b.setButtonText('Import / update tag glossary').setCta().onClick(() => void importGlossary(p)))
   }
 
   private renderReport(el: HTMLElement) {

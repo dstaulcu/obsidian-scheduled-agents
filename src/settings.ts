@@ -1,9 +1,23 @@
 import { DEFAULT_PLUGIN_FOLDER, LEGACY_PLUGIN_FOLDER } from './brand'
 import { JobConfig, JobState } from './core/types'
 import { DEFAULT_EXECUTOR_ID, EXECUTORS, HarnessConfig } from './executors/registry'
+import type { AuthMethod } from './glossary/sources'
 import type { TagReviewState } from './tagreview/panel'
 
 export const SCHEMA_VERSION = 1
+
+export interface GlossarySettings {
+  repoUrl: string
+  /** Branch or tag. */
+  ref: string
+  /** Vault folder the imported notes land in. */
+  destFolder: string
+  authMethod: AuthMethod
+  /** Notify (never write) at startup when upstream has changes. */
+  checkOnStartup: boolean
+  /** Only used when Obsidian's secret storage is unavailable; plain text in data.json. */
+  token: string
+}
 
 export interface AgentSettings {
   schemaVersion: number
@@ -24,6 +38,7 @@ export interface AgentSettings {
   /** Controlled-vocabulary note that tag-review edits are validated against. */
   tagVocabularyPath: string
   tagReview: TagReviewState
+  glossary: GlossarySettings
   /** Dev hook: set by scripts/reset-test.mjs so the next load adds built-ins enabled. Consumed once, then removed. */
   seedBuiltinsEnabled?: boolean
   jobs: JobConfig[]
@@ -45,6 +60,7 @@ export function defaultSettings(): AgentSettings {
     schedulerEnabled: true,
     tagVocabularyPath: `${DEFAULT_PLUGIN_FOLDER}/Tag Glossary.md`,
     tagReview: { decisions: {} },
+    glossary: { repoUrl: '', ref: 'main', destFolder: 'Glossary', authMethod: 'https', checkOnStartup: false, token: '' },
     jobs: [],
     state: {},
   }
@@ -82,6 +98,8 @@ export function normalizeSettings(raw: Partial<AgentSettings> | null | undefined
   s.state = s.state && typeof s.state === 'object' ? s.state : {}
   delete (s as { seededBuiltins?: string[] }).seededBuiltins // built-ins are now ensured on every load
   s.tagReview = { ...(s.tagReview ?? {}), decisions: s.tagReview?.decisions ?? {} }
+  s.glossary = { ...defaultSettings().glossary, ...(s.glossary ?? {}) }
+  if (!['https', 'git', 'token'].includes(s.glossary.authMethod)) s.glossary.authMethod = 'https'
   return s
 }
 

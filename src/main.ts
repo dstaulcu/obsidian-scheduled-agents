@@ -11,6 +11,7 @@ import { runJob, RunSettings } from './core/runner'
 import { JobConfig } from './core/types'
 import { FsVaultIO } from './core/vaultIO'
 import { rebasePath } from './core/vaultPath'
+import { importGlossary } from './glossary/controller'
 import { getDescriptor } from './executors/registry'
 import { AgentSettings, normalizeSettings } from './settings'
 import { registerTagReview, undoLastBatch } from './tagreview/panel'
@@ -59,6 +60,12 @@ export default class AgentPlugin extends Plugin {
       callback: () => void this.openRunLog(),
     })
 
+    this.addCommand({
+      id: 'import-glossary',
+      name: 'Import / update tag glossary',
+      callback: () => void importGlossary(this),
+    })
+
     registerTagReview(this)
     this.addCommand({
       id: 'undo-tag-review',
@@ -71,6 +78,7 @@ export default class AgentPlugin extends Plugin {
       // catch-up pass shortly after startup, once the vault index has settled
       void this.ensureRunLog()
       void this.ensureGlossary()
+      if (this.settings.glossary.checkOnStartup) void importGlossary(this, { checkOnly: true })
       window.setTimeout(() => void this.tick(), 10_000)
     })
   }
@@ -235,6 +243,8 @@ export default class AgentPlugin extends Plugin {
         failures: s.state[j.id]?.failures ?? 0,
         lastError: s.state[j.id]?.lastError,
       })),
+      glossaryRepo: s.glossary.repoUrl,
+      glossaryAuth: s.glossary.authMethod,
       vaultPath: this.vaultPath,
       homeDir: os.homedir(),
     })

@@ -22,9 +22,20 @@ const base: DiagnosticsSnapshot = {
       lastError: String.raw`exit 1: cannot read C:\Users\alice\Vaults\Secret\People\Bob.md about [[Bob Smith]]`,
     },
   ],
+  glossaryRepo: 'https://alice:ghp_SECRETTOKEN@github.com/acme/tag-glossary.git?token=ghp_SECRETTOKEN',
+  glossaryAuth: 'token',
   vaultPath: String.raw`C:\Users\alice\Vaults\Secret`,
   homeDir: String.raw`C:\Users\alice`,
 }
+
+describe('glossary line', () => {
+  it('keeps host and path but never credentials or query strings', () => {
+    const out = buildDiagnostics(base)
+    expect(out).toContain('- Glossary: https://github.com/acme/tag-glossary.git, method token')
+    expect(out).not.toContain('SECRETTOKEN')
+    expect(out).not.toContain('alice:')
+  })
+})
 
 describe('redact', () => {
   it('replaces vault before home, in either slash style and any case', () => {

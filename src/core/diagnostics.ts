@@ -19,6 +19,9 @@ export interface DiagnosticsSnapshot {
   maxRetries: number
   pluginFolder: string
   jobs: DiagnosticsJob[]
+  /** Glossary repo URL (credentials are stripped when printed) and fetch method; never the token. */
+  glossaryRepo: string
+  glossaryAuth: string
   /** Absolute vault root and home directory, used only to scrub paths out of the report. */
   vaultPath: string
   homeDir: string
@@ -70,6 +73,12 @@ function clip(text: string, max: number): string {
   return flat.length > max ? flat.slice(0, max) + '…' : flat
 }
 
+/** Repo URL for the report: host and path only, so embedded `user:token@` credentials or query strings never leak. */
+export function publicRepoUrl(url: string): string {
+  const m = /^https?:\/\/(?:[^/@]*@)?([^/?#]+)([^?#]*)/i.exec(url.trim())
+  return m ? `https://${m[1]}${m[2]}` : url.trim() ? 'invalid URL' : 'not set'
+}
+
 function yn(b: boolean): string {
   return b ? 'yes' : 'no'
 }
@@ -88,6 +97,7 @@ export function buildDiagnostics(s: DiagnosticsSnapshot): string {
     `- Capabilities: read-only enforced ${yn(c.enforcesReadOnly)}, budget ${yn(c.supportsBudget)}, skills ${yn(c.supportsSkills)}, cost ${yn(c.reportsCost)}`,
     `- Scheduler: ${s.schedulerEnabled ? 'on' : 'off'}, poll ${s.pollSeconds}s, timeout ${s.defaultTimeoutMinutes}m, budget $${s.maxBudgetUsd}, attempts ${s.maxRetries}`,
     `- Plugin folder: ${s.pluginFolder === DEFAULT_PLUGIN_FOLDER ? 'default' : 'custom'}`,
+    `- Glossary: ${publicRepoUrl(s.glossaryRepo)}, method ${s.glossaryAuth}`,
   ]
   const jobs = s.jobs.map((j, i) => {
     const when = j.schedule === 'hourly' ? 'hourly' : `${j.schedule} ${j.day} ${j.at}`
