@@ -22,8 +22,8 @@ const base: DiagnosticsSnapshot = {
       lastError: String.raw`exit 1: cannot read C:\Users\alice\Vaults\Secret\People\Bob.md about [[Bob Smith]]`,
     },
   ],
-  glossaryRepo: 'https://alice:ghp_SECRETTOKEN@github.com/acme/tag-glossary.git?token=ghp_SECRETTOKEN',
-  glossaryAuth: 'token',
+  glossarySources: [{ repo: 'https://alice:ghp_SECRETTOKEN@github.com/acme/tag-glossary.git?token=ghp_SECRETTOKEN', auth: 'token' }],
+  glossaryTeams: 'dave, ops',
   vaultPath: String.raw`C:\Users\alice\Vaults\Secret`,
   homeDir: String.raw`C:\Users\alice`,
 }
@@ -31,7 +31,8 @@ const base: DiagnosticsSnapshot = {
 describe('glossary line', () => {
   it('keeps host and path but never credentials or query strings', () => {
     const out = buildDiagnostics(base)
-    expect(out).toContain('- Glossary: https://github.com/acme/tag-glossary.git, method token')
+    expect(out).toContain('- Glossary source: https://github.com/acme/tag-glossary.git, method token')
+    expect(out).toContain('- Glossary teams: dave, ops')
     expect(out).not.toContain('SECRETTOKEN')
     expect(out).not.toContain('alice:')
   })

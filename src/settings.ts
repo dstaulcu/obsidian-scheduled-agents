@@ -1,22 +1,39 @@
 import { DEFAULT_PLUGIN_FOLDER, LEGACY_PLUGIN_FOLDER } from './brand'
 import { JobConfig, JobState } from './core/types'
 import { DEFAULT_EXECUTOR_ID, EXECUTORS, HarnessConfig } from './executors/registry'
+import type { ManifestTeam } from './glossary/manifest'
 import type { AuthMethod } from './glossary/sources'
 import type { TagReviewState } from './tagreview/panel'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
-export interface GlossarySettings {
+export interface GlossarySourceSetting {
+  /** Stable id; keys the token in secret storage. */
+  id: string
   repoUrl: string
   /** Branch or tag. */
   ref: string
-  /** Vault folder the imported notes land in. */
-  destFolder: string
   authMethod: AuthMethod
-  /** Notify (never write) at startup when upstream has changes. */
-  checkOnStartup: boolean
   /** Only used when Obsidian's secret storage is unavailable; plain text in data.json. */
   token: string
+}
+
+export interface GlossarySettings {
+  /** Registries to merge: the first is the public one, any others are optional internal registries. */
+  sources: GlossarySourceSetting[]
+  /** Selected team ids; the core is always included. */
+  teams: string[]
+  allTeams: boolean
+  /** Teams seen in the last fetched manifest, so the picker works before the next fetch. */
+  knownTeams: ManifestTeam[]
+  /** Vault folder the imported notes land in. */
+  destFolder: string
+  /** Notify (never write) at startup when upstream has changes. */
+  checkOnStartup: boolean
+}
+
+export function newGlossarySource(): GlossarySourceSetting {
+  return { id: `src-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, repoUrl: '', ref: 'main', authMethod: 'https', token: '' }
 }
 
 export interface AgentSettings {
@@ -60,7 +77,7 @@ export function defaultSettings(): AgentSettings {
     schedulerEnabled: true,
     tagVocabularyPath: `${DEFAULT_PLUGIN_FOLDER}/Tag Glossary.md`,
     tagReview: { decisions: {} },
-    glossary: { repoUrl: '', ref: 'main', destFolder: 'Glossary', authMethod: 'https', checkOnStartup: false, token: '' },
+    glossary: { sources: [newGlossarySource()], teams: [], allTeams: false, knownTeams: [], destFolder: 'Glossary', checkOnStartup: false },
     jobs: [],
     state: {},
   }
@@ -98,9 +115,32 @@ export function normalizeSettings(raw: Partial<AgentSettings> | null | undefined
   s.state = s.state && typeof s.state === 'object' ? s.state : {}
   delete (s as { seededBuiltins?: string[] }).seededBuiltins // built-ins are now ensured on every load
   s.tagReview = { ...(s.tagReview ?? {}), decisions: s.tagReview?.decisions ?? {} }
-  s.glossary = { ...defaultSettings().glossary, ...(s.glossary ?? {}) }
-  if (!['https', 'git', 'token'].includes(s.glossary.authMethod)) s.glossary.authMethod = 'https'
+  s.glossary = normalizeGlossary(raw?.glossary)
   return s
+}
+
+/** Fold the single-repo glossary settings of schema 1 into the first source; drop anything malformed. */
+function normalizeGlossary(raw: unknown): GlossarySettings {
+  const d = defaultSettings().glossary
+  const g = (raw ?? {}) as Partial<GlossarySettings> & { repoUrl?: string; ref?: string; authMethod?: string; token?: string }
+  let sources: GlossarySourceSetting[] = Array.isArray(g.sources) ? g.sources : []
+  if (!sources.length && (g.repoUrl || g.token)) {
+    sources = [{ ...newGlossarySource(), id: 'src-default', repoUrl: g.repoUrl ?? '', ref: g.ref || 'main', authMethod: g.authMethod as AuthMethod, token: g.token ?? '' }]
+  }
+  sources = sources.map((x) => ({
+    ...newGlossarySource(),
+    ...x,
+    authMethod: (['https', 'git', 'token'] as string[]).includes(x?.authMethod) ? x.authMethod : 'https',
+  }))
+  if (!sources.length) sources = d.sources
+  return {
+    sources,
+    teams: Array.isArray(g.teams) ? g.teams.map(String) : [],
+    allTeams: !!g.allTeams,
+    knownTeams: Array.isArray(g.knownTeams) ? g.knownTeams : [],
+    destFolder: g.destFolder ?? d.destFolder,
+    checkOnStartup: !!g.checkOnStartup,
+  }
 }
 
 export function newJob(): JobConfig {

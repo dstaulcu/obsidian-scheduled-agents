@@ -9,7 +9,7 @@ import { fmtDate, fmtTime } from '../core/templates'
 import { resetBuiltin } from '../core/builtinJobs'
 import { getToken, hasSecretStorage, importGlossary, setToken } from '../glossary/controller'
 import { EXECUTORS } from '../executors/registry'
-import { newJob } from '../settings'
+import { newGlossarySource, newJob } from '../settings'
 import { JobEditorModal } from './JobEditorModal'
 
 function describeSchedule(j: JobConfig): string {
@@ -232,16 +232,83 @@ export class AgentSettingTab extends PluginSettingTab {
     const g = p.settings.glossary
     new Setting(el).setName('Tag glossary').setHeading()
     const save = async () => p.saveSettings()
+    el.createEl('p', {
+      cls: 'setting-item-description',
+      text: 'Registries are merged. The core is always imported; pick the teams you want below. Read-only: nothing is pushed.',
+    })
+    g.sources.forEach((src, i) => {
+      new Setting(el)
+        .setName(i === 0 ? 'Registry URL' : `Extra registry ${i}`)
+        .setDesc(
+          i === 0
+            ? 'HTTPS URL of the public tag registry, e.g. https://github.com/owner/tag-registry.'
+            : 'Optional internal or private registry in the same format. It may need authentication.',
+        )
+        .addText((t) => t.setValue(src.repoUrl).onChange(async (v) => { src.repoUrl = v.trim(); await save() }))
+        .addExtraButton((b) =>
+          b.setIcon('trash').setTooltip('Remove').onClick(async () => {
+            g.sources.splice(i, 1)
+            if (!g.sources.length) g.sources.push(newGlossarySource())
+            await save()
+            this.display()
+          }),
+        )
+      new Setting(el)
+        .setName('Branch or tag')
+        .addText((t) => t.setPlaceholder('main').setValue(src.ref).onChange(async (v) => { src.ref = v.trim() || 'main'; await save() }))
+        .addDropdown((d) =>
+          d
+            .addOptions({ https: 'Anonymous HTTPS', git: 'Local git', token: 'Access token' })
+            .setValue(src.authMethod)
+            .onChange(async (v) => { src.authMethod = v as typeof src.authMethod; await save(); this.display() }),
+        )
+      if (src.authMethod === 'token') {
+        const secure = hasSecretStorage(p)
+        new Setting(el)
+          .setName('Access token')
+          .setDesc(
+            secure
+              ? 'Read-only scope. Kept in Obsidian secret storage.'
+              : 'Read-only scope. This Obsidian version has no secret storage, so the token is saved as plain text in the plugin data.json. Exclude that file from Git sync.',
+          )
+          .addText((t) => {
+            t.inputEl.type = 'password'
+            t.setValue(getToken(p, src)).onChange(async (v) => setToken(p, src, v.trim()))
+          })
+      }
+    })
+    new Setting(el).addButton((b) =>
+      b.setButtonText('Add internal registry').onClick(async () => {
+        g.sources.push(newGlossarySource())
+        await save()
+        this.display()
+      }),
+    )
+
     new Setting(el)
-      .setName('Glossary repo URL')
-      .setDesc('HTTPS URL of the shared tag glossary repo, e.g. https://github.com/owner/tag-glossary. Read-only: nothing is pushed.')
-      .addText((t) => t.setValue(g.repoUrl).onChange(async (v) => { g.repoUrl = v.trim(); await save() }))
-    new Setting(el)
-      .setName('Branch or tag')
-      .addText((t) => t.setPlaceholder('main').setValue(g.ref).onChange(async (v) => { g.ref = v.trim() || 'main'; await save() }))
+      .setName('All teams')
+      .setDesc('Import every team in the registries, not just the ones ticked below.')
+      .addToggle((t) => t.setValue(g.allTeams).onChange(async (v) => { g.allTeams = v; await save(); this.display() }))
+    if (!g.allTeams) {
+      if (!g.knownTeams.length) {
+        el.createEl('p', { cls: 'setting-item-description', text: 'No teams known yet. Run "Import / update tag glossary" once to load the team list.' })
+      }
+      for (const team of g.knownTeams) {
+        new Setting(el)
+          .setName(team.name)
+          .setDesc(team.description)
+          .addToggle((t) =>
+            t.setValue(g.teams.includes(team.id)).onChange(async (v) => {
+              g.teams = v ? [...new Set([...g.teams, team.id])] : g.teams.filter((x) => x !== team.id)
+              await save()
+            }),
+          )
+      }
+    }
+
     const dest = new Setting(el)
       .setName('Destination folder')
-      .setDesc('Vault folder the glossary notes are imported into.')
+      .setDesc('Vault folder the glossary notes are imported into: <folder>/core/... and <folder>/<team>/...')
     dest.addText((t) => {
       const listId = 'scheduled-agents-folders'
       const list = el.createEl('datalist', { attr: { id: listId } })
@@ -250,36 +317,18 @@ export class AgentSettingTab extends PluginSettingTab {
       t.setValue(g.destFolder).onChange(async (v) => { g.destFolder = v.trim(); await save() })
     })
     new Setting(el)
-      .setName('Fetch method')
-      .setDesc('Anonymous HTTPS suits public repos. Git uses the git credentials already on this computer. A token is a fallback.')
-      .addDropdown((d) =>
-        d
-          .addOptions({ https: 'Anonymous HTTPS', git: 'Local git', token: 'Access token' })
-          .setValue(g.authMethod)
-          .onChange(async (v) => { g.authMethod = v as typeof g.authMethod; await save(); this.display() }),
-      )
-    if (g.authMethod === 'token') {
-      const secure = hasSecretStorage(p)
-      new Setting(el)
-        .setName('Access token')
-        .setDesc(
-          secure
-            ? 'Read-only scope. Kept in Obsidian secret storage.'
-            : 'Read-only scope. This Obsidian version has no secret storage, so the token is saved as plain text in the plugin data.json. Exclude that file from Git sync.',
-        )
-        .addText((t) => {
-          t.inputEl.type = 'password'
-          t.setValue(getToken(p)).onChange(async (v) => setToken(p, v.trim()))
-        })
-    }
-    new Setting(el)
       .setName('Check for updates on startup')
       .setDesc('Shows a notice when the glossary has changes. Never writes anything.')
       .addToggle((t) => t.setValue(g.checkOnStartup).onChange(async (v) => { g.checkOnStartup = v; await save() }))
     new Setting(el)
       .setName('Import / update')
-      .setDesc('Fetches the glossary and shows a preview. Nothing is written until you apply it.')
-      .addButton((b) => b.setButtonText('Import / update tag glossary').setCta().onClick(() => void importGlossary(p)))
+      .setDesc('Fetches the glossary and shows a preview. Nothing is written until you apply it. Importing also refreshes the team list.')
+      .addButton((b) =>
+        b.setButtonText('Import / update tag glossary').setCta().onClick(async () => {
+          await importGlossary(p)
+          this.display()
+        }),
+      )
   }
 
   private renderReport(el: HTMLElement) {
