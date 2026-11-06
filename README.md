@@ -73,3 +73,7 @@ Built with [Claude Code](https://docs.claude.com/en/docs/claude-code) by Anthrop
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Tag registry import
+
+Run **Import / update tag glossary** (command palette or settings) to copy tags from a shared registry (manifest version 2) into the vault. The core is always imported; pick teams in settings or choose **All teams**. Add optional internal registries in the same format; they are merged, and the first source wins on a duplicate tag. Notes land in `Glossary/core/...` and `Glossary/<team>/...`, one per tag. A preview lists new, updated and conflicting notes, and nothing is written until you apply it. Locally edited notes are never overwritten without your choice.

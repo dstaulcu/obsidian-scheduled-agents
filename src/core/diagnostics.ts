@@ -19,9 +19,10 @@ export interface DiagnosticsSnapshot {
   maxRetries: number
   pluginFolder: string
   jobs: DiagnosticsJob[]
-  /** Glossary repo URL (credentials are stripped when printed) and fetch method; never the token. */
-  glossaryRepo: string
-  glossaryAuth: string
+  /** Glossary registry URLs (credentials are stripped when printed) and fetch methods; never tokens. */
+  glossarySources: { repo: string; auth: string }[]
+  /** Selected teams, or `all`; the core is always included. */
+  glossaryTeams: string
   /** Absolute vault root and home directory, used only to scrub paths out of the report. */
   vaultPath: string
   homeDir: string
@@ -97,7 +98,10 @@ export function buildDiagnostics(s: DiagnosticsSnapshot): string {
     `- Capabilities: read-only enforced ${yn(c.enforcesReadOnly)}, budget ${yn(c.supportsBudget)}, skills ${yn(c.supportsSkills)}, cost ${yn(c.reportsCost)}`,
     `- Scheduler: ${s.schedulerEnabled ? 'on' : 'off'}, poll ${s.pollSeconds}s, timeout ${s.defaultTimeoutMinutes}m, budget $${s.maxBudgetUsd}, attempts ${s.maxRetries}`,
     `- Plugin folder: ${s.pluginFolder === DEFAULT_PLUGIN_FOLDER ? 'default' : 'custom'}`,
-    `- Glossary: ${publicRepoUrl(s.glossaryRepo)}, method ${s.glossaryAuth}`,
+    ...(s.glossarySources.length
+      ? s.glossarySources.map((g) => `- Glossary source: ${publicRepoUrl(g.repo)}, method ${g.auth}`)
+      : ['- Glossary source: (none)']),
+    `- Glossary teams: ${s.glossaryTeams}`,
   ]
   const jobs = s.jobs.map((j, i) => {
     const when = j.schedule === 'hourly' ? 'hourly' : `${j.schedule} ${j.day} ${j.at}`

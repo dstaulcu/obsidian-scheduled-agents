@@ -7,13 +7,14 @@ import { LOG_TAG } from '../brand'
 import type AgentPlugin from '../main'
 import { GlossaryPreviewModal } from '../ui/GlossaryPreviewModal'
 import { applyImport, GlossaryVault } from './apply'
-import { parseManifest } from './manifest'
+import type { GlossarySourceSetting } from '../settings'
+import { filterTeams, mergeManifests, parseManifest } from './manifest'
 import { planImport, summarize } from './plan'
 import { renameTagInText } from './rename'
-import { createSource, GlossaryError, SourceConfig, SourceDeps } from './sources'
+import { createSource, GlossaryError, GlossarySource, SourceConfig, SourceDeps } from './sources'
 import { sha256 } from './stamp'
 
-const SECRET_ID = 'scheduled-agents-glossary-token'
+const secretId = (src: GlossarySourceSetting) => `scheduled-agents-glossary-token-${src.id}`
 
 interface SecretStorage {
   getSecret(id: string): string | null
@@ -30,17 +31,17 @@ export function hasSecretStorage(plugin: AgentPlugin): boolean {
   return secretStorage(plugin) !== null
 }
 
-export function getToken(plugin: AgentPlugin): string {
-  return secretStorage(plugin)?.getSecret(SECRET_ID) ?? plugin.settings.glossary.token
+export function getToken(plugin: AgentPlugin, src: GlossarySourceSetting): string {
+  return secretStorage(plugin)?.getSecret(secretId(src)) ?? src.token
 }
 
-export async function setToken(plugin: AgentPlugin, token: string): Promise<void> {
+export async function setToken(plugin: AgentPlugin, src: GlossarySourceSetting, token: string): Promise<void> {
   const store = secretStorage(plugin)
   if (store) {
-    store.setSecret(SECRET_ID, token)
-    plugin.settings.glossary.token = ''
+    store.setSecret(secretId(src), token)
+    src.token = ''
   } else {
-    plugin.settings.glossary.token = token
+    src.token = token
   }
   await plugin.saveSettings()
 }
@@ -109,8 +110,9 @@ export async function importGlossary(plugin: AgentPlugin, opts: { checkOnly?: bo
   const g = plugin.settings.glossary
   const name = 'Glossary'
   if (running) return
-  if (!g.repoUrl.trim()) {
-    if (!opts.checkOnly) new Notice(`${name}: set the glossary repo URL in the plugin settings first`)
+  const configured = g.sources.filter((s) => s.repoUrl.trim())
+  if (!configured.length) {
+    if (!opts.checkOnly) new Notice(`${name}: set a registry URL in the plugin settings first`)
     return
   }
   const bad = destError(g.destFolder)
@@ -120,11 +122,29 @@ export async function importGlossary(plugin: AgentPlugin, opts: { checkOnly?: bo
   }
   running = true
   try {
-    const cfg: SourceConfig = { repoUrl: g.repoUrl.trim(), ref: g.ref.trim() || 'main', method: g.authMethod, token: getToken(plugin) }
-    const source = createSource(cfg, nodeDeps(cfg))
-    const manifest = parseManifest(await source.fetchManifest())
+    // Every source must answer; one failure aborts the whole run before anything is written.
+    const sources: GlossarySource[] = []
+    const manifests = []
+    for (const s of configured) {
+      const cfg: SourceConfig = { repoUrl: s.repoUrl.trim(), ref: s.ref.trim() || 'main', method: s.authMethod, token: getToken(plugin, s) }
+      const src = createSource(cfg, nodeDeps(cfg))
+      try {
+        manifests.push(parseManifest(await src.fetchManifest()))
+      } catch (e) {
+        throw new Error(`${s.repoUrl.trim()}: ${(e as Error).message}`)
+      }
+      sources.push(src)
+    }
+    const merged = mergeManifests(manifests)
+    for (const w of merged.warnings) console.warn(`[${LOG_TAG}] glossary: ${w}`)
+    if (JSON.stringify(g.knownTeams) !== JSON.stringify(merged.teams)) {
+      g.knownTeams = merged.teams
+      await plugin.saveSettings()
+    }
+    const keep = new Set(filterTeams(merged, g.teams, g.allTeams).map((t) => t.path))
+    const picked = { tags: merged.tags.filter((t) => keep.has(t.path)), origin: merged.origin.filter((_, i) => keep.has(merged.tags[i].path)) }
     const vault = vaultAdapter(plugin)
-    const plan = await planImport(manifest, g.destFolder, (p) => vault.read(p))
+    const plan = await planImport(picked, g.destFolder, (p) => vault.read(p))
     const pending = plan.counts.new + plan.counts.updated + plan.counts.conflict
     if (opts.checkOnly) {
       if (pending) new Notice(`${summarize(plan.counts)}. Run "Import / update tag glossary" to review.`, 8000)
@@ -142,7 +162,7 @@ export async function importGlossary(plugin: AgentPlugin, opts: { checkOnly?: bo
       async (tag) => (await usages(plugin, dest, tag)).length,
       async ({ decisions, renames }) => {
         try {
-          const r = await applyImport(decisions, (p) => source.fetchNote(p), vault)
+          const r = await applyImport(decisions, (item) => sources[item.origin].fetchNote(item.entry.path), vault)
           const conflicts = decisions.filter((d) => d.item.category === 'conflict' && (d.choice ?? 'keep') === 'keep').length
           const parts = [r.created && `${r.created} new`, r.updated && `${r.updated} updated`, r.copies.length && `${r.copies.length} saved as copy`, conflicts && `${conflicts} kept as yours`].filter(Boolean)
           let msg = parts.length ? `Glossary: ${parts.join(', ')}` : 'Glossary: nothing written'

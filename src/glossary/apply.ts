@@ -29,7 +29,7 @@ export interface ApplyResult {
  */
 export async function applyImport(
   decisions: Decision[],
-  fetchNote: (repoPath: string) => Promise<string>,
+  fetchNote: (item: PlanItem) => Promise<string>,
   vault: GlossaryVault,
 ): Promise<ApplyResult> {
   const work = decisions.filter(
@@ -37,7 +37,7 @@ export async function applyImport(
   )
   const bodies = new Map<string, string>()
   for (const d of work) {
-    const text = await fetchNote(d.item.entry.path)
+    const text = await fetchNote(d.item)
     if (sha256(text) !== d.item.entry.hash) {
       throw new Error(`${d.item.entry.path} does not match its manifest hash; nothing was written`)
     }

@@ -243,8 +243,8 @@ export default class AgentPlugin extends Plugin {
         failures: s.state[j.id]?.failures ?? 0,
         lastError: s.state[j.id]?.lastError,
       })),
-      glossaryRepo: s.glossary.repoUrl,
-      glossaryAuth: s.glossary.authMethod,
+      glossarySources: s.glossary.sources.filter((g) => g.repoUrl.trim()).map((g) => ({ repo: g.repoUrl, auth: g.authMethod })),
+      glossaryTeams: s.glossary.allTeams ? 'all' : s.glossary.teams.join(', ') || '(core only)',
       vaultPath: this.vaultPath,
       homeDir: os.homedir(),
     })
