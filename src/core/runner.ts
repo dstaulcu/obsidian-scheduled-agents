@@ -1,3 +1,4 @@
+import { errorText } from './errorText'
 import { checkCapabilities, JobExecutor } from '../executors/types'
 import { DEFAULT_PLUGIN_FOLDER } from '../brand'
 import { DailyNotesConfig, dailyNotesVars, DEFAULT_DAILY_NOTES } from './dailyNotes'
@@ -22,8 +23,6 @@ const DEFAULT_BRAND: BrandVars = {
   pluginFolder: DEFAULT_PLUGIN_FOLDER,
   pluginName: 'This plugin',
   skipPaths: `\`.obsidian/\`, \`${DEFAULT_PLUGIN_FOLDER}/\``,
-  vocabularyPath: `${DEFAULT_PLUGIN_FOLDER}/Tag Glossary.md`,
-  bootstrap: '',
 }
 
 export interface BrandVars {
@@ -31,10 +30,6 @@ export interface BrandVars {
   pluginName: string
   /** Comma-separated, backticked folder list for prompts to skip. */
   skipPaths: string
-  /** Vault-relative path of the tag vocabulary note (the single source for tags, definitions and status). */
-  vocabularyPath: string
-  /** Extra prompt text for Tag Review when the vocabulary is empty or missing; empty otherwise. */
-  bootstrap: string
 }
 
 /** How far back a job with no successful run yet looks, by schedule. */
@@ -128,7 +123,7 @@ export async function runJob(job: JobConfig, now: Date, deps: RunDeps, since?: s
     }
     return { ok: true, message: 'ok', seconds: secs(), cost: r.costUsd, outputPath: outPath }
   } catch (e) {
-    return { ok: false, message: (e as Error).message, seconds: secs() }
+    return { ok: false, message: errorText(e), seconds: secs() }
   }
 }
 

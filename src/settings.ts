@@ -1,40 +1,8 @@
 import { DEFAULT_PLUGIN_FOLDER, LEGACY_PLUGIN_FOLDER } from './brand'
 import { JobConfig, JobState } from './core/types'
 import { DEFAULT_EXECUTOR_ID, EXECUTORS, HarnessConfig } from './executors/registry'
-import type { ManifestTeam } from './glossary/manifest'
-import type { AuthMethod } from './glossary/sources'
-import type { TagReviewState } from './tagreview/panel'
 
 export const SCHEMA_VERSION = 2
-
-export interface GlossarySourceSetting {
-  /** Stable id; keys the token in secret storage. */
-  id: string
-  repoUrl: string
-  /** Branch or tag. */
-  ref: string
-  authMethod: AuthMethod
-  /** Only used when Obsidian's secret storage is unavailable; plain text in data.json. */
-  token: string
-}
-
-export interface GlossarySettings {
-  /** Registries to merge: the first is the public one, any others are optional internal registries. */
-  sources: GlossarySourceSetting[]
-  /** Selected team ids; the core is always included. */
-  teams: string[]
-  allTeams: boolean
-  /** Teams seen in the last fetched manifest, so the picker works before the next fetch. */
-  knownTeams: ManifestTeam[]
-  /** Vault folder the imported notes land in. */
-  destFolder: string
-  /** Notify (never write) at startup when upstream has changes. */
-  checkOnStartup: boolean
-}
-
-export function newGlossarySource(): GlossarySourceSetting {
-  return { id: `src-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, repoUrl: '', ref: 'main', authMethod: 'https', token: '' }
-}
 
 export interface AgentSettings {
   schemaVersion: number
@@ -45,17 +13,17 @@ export interface AgentSettings {
   maxBudgetUsd: number
   maxRetries: number
   pollSeconds: number
+  /** Log job lifecycle (ids, harness, timings; never prompts or note content) to the developer console. */
+  debugLogging: boolean
   /** Vault folder for the plugin's own pages (run log, default job output). Set once; never follows a rename. */
   pluginFolder: string
-  /** Extra vault folders that jobs must not read for suggestions or edit (the plugin folder, glossary and .obsidian are always protected). */
+  /** Extra vault folders that jobs are told to skip (the plugin folder and .obsidian are always protected). */
   protectedFolders: string[]
   /** Outputs may only be written under these vault-relative folders. */
   allowedOutputFolders: string[]
   schedulerEnabled: boolean
-  /** Controlled-vocabulary note that tag-review edits are validated against. */
-  tagVocabularyPath: string
-  tagReview: TagReviewState
-  glossary: GlossarySettings
+  /** The first-install tip has been shown (or this install predates it). */
+  introShown: boolean
   /** Dev hook: set by scripts/reset-test.mjs so the next load adds built-ins enabled. Consumed once, then removed. */
   seedBuiltinsEnabled?: boolean
   jobs: JobConfig[]
@@ -71,13 +39,12 @@ export function defaultSettings(): AgentSettings {
     maxBudgetUsd: 0.5,
     maxRetries: 3,
     pollSeconds: 300,
+    debugLogging: false,
+    introShown: false,
     pluginFolder: DEFAULT_PLUGIN_FOLDER,
     protectedFolders: ['Templates'],
     allowedOutputFolders: [],
     schedulerEnabled: true,
-    tagVocabularyPath: `${DEFAULT_PLUGIN_FOLDER}/Tag Glossary.md`,
-    tagReview: { decisions: {} },
-    glossary: { sources: [newGlossarySource()], teams: [], allTeams: false, knownTeams: [], destFolder: 'Glossary', checkOnStartup: false },
     jobs: [],
     state: {},
   }
@@ -105,42 +72,16 @@ export function normalizeSettings(raw: Partial<AgentSettings> | null | undefined
   s.schemaVersion = SCHEMA_VERSION
   delete (s as { runLogPage?: string }).runLogPage // now derived from pluginFolder
   s.pluginFolder = old.pluginFolder?.trim() || inferredFolder || DEFAULT_PLUGIN_FOLDER
-  // a vocabulary path is only inferred for installs that predate the setting; fresh installs follow the plugin folder
-  if (!(raw as { tagVocabularyPath?: string } | null)?.tagVocabularyPath) {
-    s.tagVocabularyPath = inferredFolder ? 'Glossary/_tags.md' : `${s.pluginFolder}/Tag Glossary.md`
-  }
   if (!Array.isArray(s.protectedFolders)) s.protectedFolders = ['Templates']
   delete (s as { promptsFolder?: string }).promptsFolder // setting removed with the prompt-note importer
   s.jobs = Array.isArray(s.jobs) ? s.jobs : []
   s.state = s.state && typeof s.state === 'object' ? s.state : {}
   delete (s as { seededBuiltins?: string[] }).seededBuiltins // built-ins are now ensured on every load
-  s.tagReview = { ...(s.tagReview ?? {}), decisions: s.tagReview?.decisions ?? {} }
-  s.glossary = normalizeGlossary(raw?.glossary)
+  // only a brand-new install (no saved data) gets the first-run tip
+  s.introShown = raw ? raw.introShown ?? true : false
+  // settings of the removed tag features
+  for (const k of ['tagVocabularyPath', 'tagReview', 'glossary']) delete (s as Record<string, unknown>)[k]
   return s
-}
-
-/** Fold the single-repo glossary settings of schema 1 into the first source; drop anything malformed. */
-function normalizeGlossary(raw: unknown): GlossarySettings {
-  const d = defaultSettings().glossary
-  const g = (raw ?? {}) as Partial<GlossarySettings> & { repoUrl?: string; ref?: string; authMethod?: string; token?: string }
-  let sources: GlossarySourceSetting[] = Array.isArray(g.sources) ? g.sources : []
-  if (!sources.length && (g.repoUrl || g.token)) {
-    sources = [{ ...newGlossarySource(), id: 'src-default', repoUrl: g.repoUrl ?? '', ref: g.ref || 'main', authMethod: g.authMethod as AuthMethod, token: g.token ?? '' }]
-  }
-  sources = sources.map((x) => ({
-    ...newGlossarySource(),
-    ...x,
-    authMethod: (['https', 'git', 'token'] as string[]).includes(x?.authMethod) ? x.authMethod : 'https',
-  }))
-  if (!sources.length) sources = d.sources
-  return {
-    sources,
-    teams: Array.isArray(g.teams) ? g.teams.map(String) : [],
-    allTeams: !!g.allTeams,
-    knownTeams: Array.isArray(g.knownTeams) ? g.knownTeams : [],
-    destFolder: g.destFolder ?? d.destFolder,
-    checkOnStartup: !!g.checkOnStartup,
-  }
 }
 
 export function newJob(): JobConfig {

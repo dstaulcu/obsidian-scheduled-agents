@@ -1,21 +1,19 @@
-import * as fs from 'fs'
-import * as nodePath from 'path'
 import * as os from 'os'
 import { apiVersion, FileSystemAdapter, FuzzySuggestModal, Notice, normalizePath, Plugin, TFile } from 'obsidian'
 import { formatLogRow, LogStatus, runPass, RUN_LOG_HEADER } from './core/pass'
 import { LOG_TAG } from './brand'
+import type { DebugLog } from './executors/types'
+import { errorText, looksBroken } from './core/errorText'
 import { buildDiagnostics } from './core/diagnostics'
-import { BUILTINS, ensureBuiltins } from './core/builtinJobs'
+import { BUILTINS, ensureBuiltins, rangeDigestJob } from './core/builtinJobs'
 import { readDailyNotesConfig } from './core/dailyNotes'
 import { runJob, RunSettings } from './core/runner'
 import { JobConfig } from './core/types'
 import { FsVaultIO } from './core/vaultIO'
 import { rebasePath } from './core/vaultPath'
-import { importGlossary } from './glossary/controller'
 import { getDescriptor } from './executors/registry'
 import { AgentSettings, normalizeSettings } from './settings'
-import { registerTagReview, undoLastBatch } from './tagreview/panel'
-import { bootstrapText, isEmptyVocabulary, missingVocabularyText, starterVocabulary } from './tagreview/scaffold'
+import { DaysModal } from './ui/DaysModal'
 import { AgentSettingTab } from './ui/SettingTab'
 
 export default class AgentPlugin extends Plugin {
@@ -23,11 +21,32 @@ export default class AgentPlugin extends Plugin {
   private busy = false
   private timer: number | null = null
   private statusEl: HTMLElement | null = null
+  private loadedAt = Date.now()
 
   async onload() {
-    this.settings = normalizeSettings(await this.loadData())
+    // Before settings load the toggle is unknown, so a crash here is always reported (with its stack) to the console.
+    try {
+      await this.initialize()
+    } catch (e) {
+      console.error(`[${LOG_TAG}] failed to load`, e)
+      throw e
+    }
+  }
 
-    if (ensureBuiltins(this.settings)) await this.saveSettings()
+  private async initialize() {
+    this.loadedAt = Date.now()
+    const raw = await this.loadData()
+    this.settings = normalizeSettings(raw)
+    this.debug(
+      `loading v${this.manifest.version} on Obsidian ${apiVersion}, ${process.platform} ${process.arch}; saved data ${raw ? 'found' : 'absent'}, ` +
+        `${this.settings.jobs.length} job(s), scheduler ${this.settings.schedulerEnabled ? 'on' : 'off'}, poll ${this.settings.pollSeconds}s`,
+    )
+    this.watchGlobalErrors()
+
+    if (ensureBuiltins(this.settings)) {
+      this.debug('built-in jobs added or migrated; saving settings')
+      await this.saveSettings()
+    }
 
     this.statusEl = this.addStatusBarItem()
     this.addSettingTab(new AgentSettingTab(this.app, this))
@@ -50,6 +69,11 @@ export default class AgentPlugin extends Plugin {
       })
     }
     this.addCommand({
+      id: 'run-digest-days',
+      name: 'Run digest for the last N days…',
+      callback: () => new DaysModal(this.app, (days) => void this.runRangeDigest(days)).open(),
+    })
+    this.addCommand({
       id: 'run-due',
       name: 'Run all due jobs now',
       callback: () => void this.tick(true),
@@ -60,36 +84,58 @@ export default class AgentPlugin extends Plugin {
       callback: () => void this.openRunLog(),
     })
 
-    this.addCommand({
-      id: 'import-glossary',
-      name: 'Import / update tag glossary',
-      callback: () => void importGlossary(this),
-    })
-
-    registerTagReview(this)
-    this.addCommand({
-      id: 'undo-tag-review',
-      name: 'Undo last tag-review batch',
-      callback: () => void undoLastBatch(this),
-    })
-
     this.restartTimer()
+    this.debug('commands, settings tab and timer registered')
     this.app.workspace.onLayoutReady(() => {
+      this.debug('layout ready; run log check now, catch-up pass in 10s')
+      void this.showIntroOnce()
       // catch-up pass shortly after startup, once the vault index has settled
       void this.ensureRunLog()
-      void this.ensureGlossary()
-      if (this.settings.glossary.checkOnStartup) void importGlossary(this, { checkOnly: true })
       window.setTimeout(() => void this.tick(), 10_000)
     })
   }
 
+  /** First install only: point at the on-demand digest, the quickest way to see the plugin work. */
+  private async showIntroOnce(): Promise<void> {
+    if (this.settings.introShown) return
+    this.settings.introShown = true
+    await this.saveSettings()
+    try {
+      const notice = new Notice(createFragment((f) => {
+        f.createDiv({ text: `${this.manifest.name}: try a digest of your recent daily notes.` })
+        f.createEl('button', { text: 'Digest the last N days…', cls: 'mod-cta' }).addEventListener('click', () => {
+          notice.hide()
+          new DaysModal(this.app, (days) => void this.runRangeDigest(days)).open()
+        })
+        f.createDiv({ text: 'Or run it later from the command palette.', cls: 'setting-item-description' })
+      }), 20000)
+      this.debug('first-install tip shown')
+    } catch (e) {
+      console.error(`[${LOG_TAG}] could not show the first-install tip`, e)
+    }
+  }
+
+  /**
+   * Debug only: log uncaught errors and unhandled rejections while the plugin is loaded. These are app-wide, so a
+   * line here is not necessarily from this plugin; the stack says. Helps trace popups that appear on enable.
+   */
+  private watchGlobalErrors() {
+    this.registerDomEvent(window, 'error', (ev: ErrorEvent) =>
+      this.debug(`window error (any plugin): ${ev.message} at ${ev.filename}:${ev.lineno}`, ev.error),
+    )
+    this.registerDomEvent(window, 'unhandledrejection', (ev: PromiseRejectionEvent) =>
+      this.debug('unhandled rejection (any plugin):', ev.reason),
+    )
+  }
+
   onunload() {
+    this.debug('unloading')
     this.stopTimer()
   }
 
   /**
    * Rename the plugin folder with Obsidian's own rename (so links update), then re-point everything that
-   * referred to it: job outputs, allowed and protected folders, and the vocabulary path if it lived inside.
+   * referred to it: job outputs and the allowed and protected folders.
    */
   async renamePluginFolder(raw: string): Promise<void> {
     const next = normalizePath(raw.trim()).replace(/^\/+|\/+$/g, '')
@@ -108,10 +154,32 @@ export default class AgentPlugin extends Plugin {
     for (const j of this.settings.jobs) j.output = move(j.output)
     this.settings.allowedOutputFolders = this.settings.allowedOutputFolders.map(move)
     this.settings.protectedFolders = this.settings.protectedFolders.map(move)
-    this.settings.tagVocabularyPath = move(this.settings.tagVocabularyPath)
     this.settings.pluginFolder = next
     await this.saveSettings()
   }
+
+  /** Console output for troubleshooting; off unless the Debug logging setting is on. Never pass prompts or note text. */
+  private debug = (msg: string, ...extra: unknown[]): void => {
+    if (this.settings?.debugLogging) console.debug(`[${LOG_TAG}] +${Date.now() - this.loadedAt}ms ${msg}`, ...extra)
+  }
+
+  /**
+   * Every popup goes through here so it is logged with where it came from, even with debug logging off if its text
+   * looks built from a missing value (undefined, null, NaN, [object ...]). Never throws.
+   */
+  notify(source: string, message: unknown, timeout?: number): void {
+    const text = typeof message === 'string' && message.trim() ? message : `${this.manifest?.name ?? 'Scheduled Agents'}: unexpected notice (${source})`
+    if (text !== message || looksBroken(text)) console.warn(`[${LOG_TAG}] notice from ${source} has a bad or suspicious message`, { message })
+    this.debug(`notice (${source}, ${timeout ?? 'default'}ms): ${text}`)
+    try {
+      new Notice(text, timeout)
+    } catch (e) {
+      console.error(`[${LOG_TAG}] could not show notice from ${source}`, e)
+    }
+  }
+
+  /** Sink handed to core and executors: a no-op unless debug logging is on, checked at call time. */
+  private readonly debugSink: DebugLog = (msg) => this.debug(msg)
 
   async saveSettings() {
     await this.saveData(this.settings)
@@ -135,45 +203,14 @@ export default class AgentPlugin extends Plugin {
     return a.getBasePath()
   }
 
-  /** Tag Review prompt text for an empty or missing vocabulary; '' when the vocabulary has tags. */
-  private vocabularyBootstrap(): string {
-    const path = this.settings.tagVocabularyPath
-    try {
-      const text = fs.readFileSync(nodePath.join(this.vaultPath, path), 'utf8')
-      return isEmptyVocabulary(text) ? bootstrapText(path) : ''
-    } catch {
-      return missingVocabularyText(path)
-    }
-  }
-
-  /** Create the starter glossary when the vocabulary lives in the plugin folder and does not exist yet. */
-  async ensureGlossary(): Promise<void> {
-    const vault = this.app.vault
-    const path = normalizePath(this.settings.tagVocabularyPath)
-    if (vault.getAbstractFileByPath(path)) return
-    if (!path.toLowerCase().startsWith(this.settings.pluginFolder.toLowerCase() + '/')) return
-    try {
-      const dir = path.split('/').slice(0, -1).join('/')
-      const parts = dir.split('/')
-      for (let i = 1; i <= parts.length; i++) {
-        const d = parts.slice(0, i).join('/')
-        if (!vault.getAbstractFileByPath(d)) await vault.createFolder(d)
-      }
-      await vault.create(path, starterVocabulary())
-    } catch (e) {
-      console.error(`[${LOG_TAG}] could not create the starter glossary`, e)
-    }
-  }
-
   /** Run log page, always inside the plugin folder. */
   get runLogPath(): string {
     return `${this.settings.pluginFolder}/Run Log.md`
   }
 
-  /** Folders jobs must not read for suggestions or edit: plugin folder, glossary, .obsidian, plus the user's list. */
+  /** Folders jobs are told to skip: .obsidian, the plugin folder, plus the user's list. */
   skipFolders(): string[] {
-    const glossary = this.settings.tagVocabularyPath.split('/').slice(0, -1).join('/')
-    const all = ['.obsidian', glossary, this.settings.pluginFolder, ...this.settings.protectedFolders]
+    const all = ['.obsidian', this.settings.pluginFolder, ...this.settings.protectedFolders]
     return [...new Set(all.map((f) => f.trim().replace(/^\/+|\/+$/g, '')).filter(Boolean))]
   }
 
@@ -196,8 +233,6 @@ export default class AgentPlugin extends Plugin {
         pluginFolder: this.settings.pluginFolder,
         pluginName: this.manifest.name,
         skipPaths: this.skipFolders().map((f) => `\`${f}/\``).join(', '),
-        vocabularyPath: this.settings.tagVocabularyPath,
-        bootstrap: this.vocabularyBootstrap(),
       },
       rules: {
         allowedFolders: [...new Set([this.settings.pluginFolder, ...this.settings.allowedOutputFolders])],
@@ -211,7 +246,7 @@ export default class AgentPlugin extends Plugin {
     const id = s.executor
     const desc = getDescriptor(id)
     const harnessPath = s.harnesses[id]?.path ?? ''
-    const harnessVersion = desc ? await desc.getVersion(s.harnesses[id]) : 'unknown harness'
+    const harnessVersion = desc ? await desc.getVersion(s.harnesses[id], this.debugSink) : 'unknown harness'
     const inPluginFolder = (out: string) => out.startsWith('{{pluginFolder}}') || out.startsWith(s.pluginFolder + '/')
     return buildDiagnostics({
       pluginVersion: this.manifest.version,
@@ -243,8 +278,6 @@ export default class AgentPlugin extends Plugin {
         failures: s.state[j.id]?.failures ?? 0,
         lastError: s.state[j.id]?.lastError,
       })),
-      glossarySources: s.glossary.sources.filter((g) => g.repoUrl.trim()).map((g) => ({ repo: g.repoUrl, auth: g.authMethod })),
-      glossaryTeams: s.glossary.allTeams ? 'all' : s.glossary.teams.join(', ') || '(core only)',
       vaultPath: this.vaultPath,
       homeDir: os.homedir(),
     })
@@ -271,10 +304,15 @@ export default class AgentPlugin extends Plugin {
   async runBuiltinsNow(onlyBuiltin?: string): Promise<void> {
     const jobs = this.settings.jobs.filter((j) => j.builtin && (!onlyBuiltin || j.builtin === onlyBuiltin))
     if (!jobs.length) {
-      new Notice(`${this.manifest.name}: no built-in job found`)
+      this.notify('runBuiltinsNow', `${this.manifest.name}: no built-in job found`)
       return
     }
     for (const job of jobs) await this.runNow(job)
+  }
+
+  /** One-off digest over the last `days` days. Not saved as a job; its result and any failure go to the notice and run log. */
+  async runRangeDigest(days: number): Promise<void> {
+    await this.pass({ force: true, adhoc: rangeDigestJob(days) })
   }
 
   /** Run one job immediately, ignoring schedule and enabled flag. */
@@ -282,17 +320,18 @@ export default class AgentPlugin extends Plugin {
     await this.pass({ force: true, onlyId: job.id })
   }
 
-  private async pass(opts: { force?: boolean; onlyId?: string }) {
+  private async pass(opts: { force?: boolean; onlyId?: string; adhoc?: JobConfig }) {
     if (this.busy) {
-      new Notice(`${this.manifest.name}: a job is already running`)
+      this.notify('pass', `${this.manifest.name}: a job is already running`)
       return
     }
     this.busy = true
+    this.debug(`pass start (force=${!!opts.force}, onlyId=${opts.onlyId ?? 'all'})`)
     try {
       const io = new FsVaultIO(this.vaultPath)
       const ran = await runPass({
-        jobs: this.settings.jobs,
-        state: this.settings.state,
+        jobs: opts.adhoc ? [opts.adhoc] : this.settings.jobs,
+        state: opts.adhoc ? {} : this.settings.state,
         now: new Date(),
         maxRetries: this.settings.maxRetries,
         force: opts.force,
@@ -300,17 +339,27 @@ export default class AgentPlugin extends Plugin {
         run: (job, now, since) => {
           const id = this.harnessIdFor(job)
           const desc = getDescriptor(id)
-          if (!desc) return Promise.resolve({ ok: false, message: `Unknown harness '${id}'`, seconds: 0 })
+          if (!desc) {
+            this.debug(`job ${job.id}: unknown harness '${id}'`)
+            return Promise.resolve({ ok: false, message: `Unknown harness '${id}'`, seconds: 0 })
+          }
           this.setStatus(`running ${job.name}…`)
-          const executor = desc.create(() => this.settings.harnesses[id])
-          return runJob(job, now, { settings: this.runSettings(id), io, executor }, since)
+          const executor = desc.create(() => this.settings.harnesses[id], this.debugSink)
+          const rs = this.runSettings(id)
+          this.debug(`job ${job.id}${job.builtin ? ` (${job.builtin})` : ''}: start, harness ${id}, model ${job.model.trim() || rs.defaultModel}, mode ${job.mode}, since ${since ?? 'n/a'}`)
+          return runJob(job, now, { settings: rs, io, executor }, since).then((r) => {
+            this.debug(`job ${job.id}: ${r.ok ? 'ok' : 'failed'} in ${r.seconds}s${r.ok ? ` → ${r.outputPath}` : `: ${r.message}`}${r.cost != null ? `, cost $${r.cost}` : ''}`)
+            return r
+          })
         },
         log: (job, status, detail) => this.writeLog(job, status, detail),
-        save: () => this.saveSettings(),
+        debug: this.debugSink,
+        save: () => (opts.adhoc ? Promise.resolve() : this.saveSettings()),
       })
       if (opts.force) {
         for (const { job, result } of ran) {
-          new Notice(
+          this.notify(
+            `job ${job.id} result`,
             result.ok
               ? `${this.manifest.name}: ${job.name} done (${result.seconds}s) → ${result.outputPath}`
               : `${this.manifest.name}: ${job.name} failed: ${result.message}`,
@@ -320,9 +369,11 @@ export default class AgentPlugin extends Plugin {
       }
     } catch (e) {
       console.error(`[${LOG_TAG}] pass failed`, e)
-      await this.writeLog({ name: 'runner' }, 'error', (e as Error).message)
-      new Notice(`${this.manifest.name} error: ${(e as Error).message}`)
+      this.debug(`pass failed: ${e instanceof Error ? (e.stack ?? e.message) : errorText(e)}`)
+      await this.writeLog({ name: 'runner' }, 'error', errorText(e))
+      this.notify('pass failure', `${this.manifest.name} error: ${errorText(e)}`)
     } finally {
+      this.debug('pass end')
       this.busy = false
       this.setStatus('')
     }
@@ -351,7 +402,7 @@ export default class AgentPlugin extends Plugin {
   async openRunLog() {
     const f = await this.ensureRunLog()
     if (f) await this.app.workspace.getLeaf(false).openFile(f)
-    else new Notice(`${this.manifest.name}: could not create the run log page`)
+    else this.notify('openRunLog', `${this.manifest.name}: could not create the run log page`)
   }
 }
 

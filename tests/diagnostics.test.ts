@@ -16,27 +16,15 @@ const base: DiagnosticsSnapshot = {
   maxRetries: 3,
   pluginFolder: 'Scheduled Agents',
   jobs: [
-    { builtin: 'tag-review', enabled: true, schedule: 'weekly', day: 'sunday', at: '06:00', mode: 'new', hasCustomModel: false, skillCount: 0, outputInPluginFolder: true, failures: 0 },
+    { builtin: 'default/daily-notes-digest', enabled: true, schedule: 'weekly', day: 'sunday', at: '06:00', mode: 'new', hasCustomModel: false, skillCount: 0, outputInPluginFolder: true, failures: 0 },
     {
       enabled: false, schedule: 'hourly', day: '', at: '', mode: 'append', hasCustomModel: true, skillCount: 2, outputInPluginFolder: false, failures: 2,
       lastError: String.raw`exit 1: cannot read C:\Users\alice\Vaults\Secret\People\Bob.md about [[Bob Smith]]`,
     },
   ],
-  glossarySources: [{ repo: 'https://alice:ghp_SECRETTOKEN@github.com/acme/tag-glossary.git?token=ghp_SECRETTOKEN', auth: 'token' }],
-  glossaryTeams: 'dave, ops',
   vaultPath: String.raw`C:\Users\alice\Vaults\Secret`,
   homeDir: String.raw`C:\Users\alice`,
 }
-
-describe('glossary line', () => {
-  it('keeps host and path but never credentials or query strings', () => {
-    const out = buildDiagnostics(base)
-    expect(out).toContain('- Glossary source: https://github.com/acme/tag-glossary.git, method token')
-    expect(out).toContain('- Glossary teams: dave, ops')
-    expect(out).not.toContain('SECRETTOKEN')
-    expect(out).not.toContain('alice:')
-  })
-})
 
 describe('redact', () => {
   it('replaces vault before home, in either slash style and any case', () => {
@@ -55,7 +43,7 @@ describe('buildDiagnostics', () => {
   const out = buildDiagnostics(base)
   it('reports environment and job status', () => {
     expect(out).toContain('Plugin: 0.2.1')
-    expect(out).toContain('built-in tag-review, enabled, weekly sunday 06:00')
+    expect(out).toContain('built-in default/daily-notes-digest, enabled, weekly sunday 06:00')
     expect(out).toContain('custom job 2, disabled, hourly')
     expect(out).toContain('2 recent failure(s)')
   })

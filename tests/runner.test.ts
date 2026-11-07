@@ -178,6 +178,6 @@ describe('source reference', () => {
   it('wikilinks user jobs but not built-ins', async () => {
     const { sourceRef } = await import('../src/core/runner')
     expect(sourceRef({ name: 'Mine', builtin: undefined })).toBe('[[Mine]]')
-    expect(sourceRef({ name: 'Tag Review', builtin: 'default/tag-review' })).toBe('Tag Review')
+    expect(sourceRef({ name: 'Daily Notes Digest', builtin: 'default/daily-notes-digest' })).toBe('Daily Notes Digest')
   })
 })
