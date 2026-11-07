@@ -281,6 +281,16 @@ describe('digests', () => {
     expect(normalizeSettings({ jobs: [] } as never).introShown).toBe(true)
     expect(normalizeSettings({ introShown: false } as never).introShown).toBe(false)
   })
+  it('the on-demand digest follows the Weekly Digest job, else the plugin defaults', () => {
+    const weekly = { ...BUILTINS[0].make(), harness: 'other', model: 'opus', timeoutMinutes: 25, skills: ['dataviz'] }
+    const j = rangeDigestJob(7, weekly)
+    expect([j.harness, j.model, j.timeoutMinutes, j.skills]).toEqual(['other', 'opus', 25, ['dataviz']])
+    expect(j.skills).not.toBe(weekly.skills)
+    const bare = rangeDigestJob(7)
+    expect([bare.harness, bare.model, bare.timeoutMinutes, bare.skills]).toEqual([undefined, '', 0, []])
+    const emptyHarness = rangeDigestJob(7, { ...weekly, harness: '' })
+    expect(emptyHarness.harness).toBeUndefined()
+  })
   it('parseDays accepts whole numbers from 1 to 365 only', () => {
     expect(parseDays(' 14 ')).toBe(14)
     for (const bad of ['', '0', '-3', '2.5', 'abc', '366']) expect(parseDays(bad)).toBeNull()

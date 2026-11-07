@@ -159,8 +159,11 @@ export function resetBuiltin(job: JobConfig): boolean {
 /**
  * A one-off digest over the last `days` days, for the on-demand command. It is never saved to settings: it runs
  * once and logs to the run log, so it leaves no job or run state behind.
+ *
+ * It follows the Weekly Digest job's harness, model, timeout and skills when that job exists (`like`), so those are
+ * tuned in one place. Without it, the model and harness are left empty and follow the plugin defaults.
  */
-export function rangeDigestJob(days: number): JobConfig {
+export function rangeDigestJob(days: number, like?: Pick<JobConfig, 'harness' | 'model' | 'timeoutMinutes' | 'skills'>): JobConfig {
   const label = `Digest (last ${days} day${days === 1 ? '' : 's'})`
   return {
     ...newJob(),
@@ -170,8 +173,10 @@ export function rangeDigestJob(days: number): JobConfig {
     schedule: 'daily',
     at: '06:00',
     day: '',
-    model: 'sonnet',
-    timeoutMinutes: 10,
+    harness: like?.harness || undefined,
+    model: like?.model ?? '',
+    timeoutMinutes: like?.timeoutMinutes ?? 0,
+    skills: [...(like?.skills ?? [])],
     output: `{{pluginFolder}}/{{date}} ${label}`,
     mode: 'new',
     prompt: digestPrompt({ noun: 'Period', days, carry: 'Worth carrying forward', carryMax: 'At most five items.' }),

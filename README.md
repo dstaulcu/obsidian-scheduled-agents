@@ -23,7 +23,7 @@ Shipped disabled, always present (disable rather than delete; reset restores the
 
 New installs show a one-time tip pointing here.
 
-Run **Run digest for the last N days…** from the command palette, enter a number of days (1 to 365, today counts as day 1), and the plugin writes a one-off page such as `<plugin folder>/2026-10-22 Digest (last 14 days)`. It is not saved as a job, so it leaves no schedule or run state behind. Its result and any failure appear in the run log.
+Run **Run digest for the last N days…** from the command palette, enter a number of days (1 to 365, today counts as day 1), and the plugin writes a one-off page such as `<plugin folder>/2026-10-22 Digest (last 14 days)`. It is not saved as a job, so it leaves no schedule or run state behind. It runs with the harness, model, timeout and skills of your Weekly Digest job, so you tune those in one place; if that job was removed, it uses the plugin's default harness and model. Its result and any failure appear in the run log.
 
 ## Requirements
 

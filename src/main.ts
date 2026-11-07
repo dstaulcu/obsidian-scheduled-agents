@@ -5,7 +5,7 @@ import { LOG_TAG } from './brand'
 import type { DebugLog } from './executors/types'
 import { errorText, looksBroken } from './core/errorText'
 import { buildDiagnostics } from './core/diagnostics'
-import { BUILTINS, ensureBuiltins, rangeDigestJob } from './core/builtinJobs'
+import { BUILTINS, ensureBuiltins, rangeDigestJob, WEEKLY_DIGEST_ID } from './core/builtinJobs'
 import { readDailyNotesConfig } from './core/dailyNotes'
 import { runJob, RunSettings } from './core/runner'
 import { JobConfig } from './core/types'
@@ -312,7 +312,13 @@ export default class AgentPlugin extends Plugin {
 
   /** One-off digest over the last `days` days. Not saved as a job; its result and any failure go to the notice and run log. */
   async runRangeDigest(days: number): Promise<void> {
-    await this.pass({ force: true, adhoc: rangeDigestJob(days) })
+    const weekly = this.settings.jobs.find((j) => j.builtin === WEEKLY_DIGEST_ID)
+    const job = rangeDigestJob(days, weekly)
+    this.debug(
+      `on-demand digest, ${days} day(s): harness ${job.harness || `${this.settings.executor} (default)`}, model ${job.model || '(default)'}, ` +
+        `timeout ${job.timeoutMinutes || this.settings.defaultTimeoutMinutes}m, settings from ${weekly ? 'the Weekly Digest job' : 'plugin defaults (no Weekly Digest job)'}`,
+    )
+    await this.pass({ force: true, adhoc: job })
   }
 
   /** Run one job immediately, ignoring schedule and enabled flag. */
