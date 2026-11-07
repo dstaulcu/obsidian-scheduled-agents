@@ -1,7 +1,7 @@
 {
   "name": "scheduled-agents",
   "version": "0.3.0",
-  "description": "Scheduled AI agent jobs for your Obsidian vault: a built-in digest job plus your own custom prompts and output folders, results written by the plugin.",
+  "description": "Schedule AI agent jobs on your vault. Ships with a Weekly Digest of your daily notes and an on-demand digest for the last N days; add your own prompts, schedules, and output folders. Results land in the plugin's own folder by default.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
