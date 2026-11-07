@@ -1,15 +1,15 @@
 import * as os from 'os'
 import * as path from 'path'
-import { apiVersion, App, Modal, Notice, PluginSettingTab, Setting } from 'obsidian'
+import { apiVersion, App, Modal, PluginSettingTab, Setting } from 'obsidian'
 import { REPO_URL } from '../brand'
 import type AgentPlugin from '../main'
+import { errorText } from '../core/errorText'
 import { getLatestOccurrence, parseStamp } from '../core/schedule'
 import { JobConfig } from '../core/types'
 import { fmtDate, fmtTime } from '../core/templates'
 import { resetBuiltin } from '../core/builtinJobs'
-import { getToken, hasSecretStorage, importGlossary, setToken } from '../glossary/controller'
 import { EXECUTORS } from '../executors/registry'
-import { newGlossarySource, newJob } from '../settings'
+import { newJob } from '../settings'
 import { JobEditorModal } from './JobEditorModal'
 
 function describeSchedule(j: JobConfig): string {
@@ -27,7 +27,6 @@ export class AgentSettingTab extends PluginSettingTab {
     containerEl.empty()
     this.renderJobs(containerEl)
     this.renderGeneral(containerEl)
-    this.renderGlossary(containerEl)
     this.renderReport(containerEl)
   }
 
@@ -173,6 +172,15 @@ export class AgentSettingTab extends PluginSettingTab {
     num('Max attempts', 'Failed attempts before giving up until the next occurrence.', () => s.maxRetries, (n) => (s.maxRetries = Math.max(1, Math.floor(n))))
     num('Poll interval (seconds)', 'How often the scheduler checks for due jobs (min 30).', () => s.pollSeconds, (n) => (s.pollSeconds = Math.max(30, Math.floor(n))), () => p.restartTimer())
     new Setting(el)
+      .setName('Debug logging')
+      .setDesc('Log job runs (start, harness, model, output path, duration, result) to the developer console (Ctrl+Shift+I), prefixed [scheduled-agents]. Prompts and note content are never logged.')
+      .addToggle((t) =>
+        t.setValue(s.debugLogging).onChange(async (v) => {
+          s.debugLogging = v
+          await p.saveSettings()
+        }),
+      )
+    new Setting(el)
       .setName('Plugin folder')
       .setDesc(`${s.pluginFolder} — vault folder for the plugin's own pages (run log, default job output). Renaming moves the folder, updates links, and re-points job outputs.`)
       .addButton((b) =>
@@ -180,9 +188,9 @@ export class AgentSettingTab extends PluginSettingTab {
           new PromptModal(this.app, 'Rename plugin folder', s.pluginFolder, async (v) => {
             try {
               await p.renamePluginFolder(v)
-              new Notice(`Plugin folder is now "${s.pluginFolder}"`)
+              p.notify('rename folder', `Plugin folder is now "${s.pluginFolder}"`)
             } catch (e) {
-              new Notice(`Could not rename: ${(e as Error).message}`, 10000)
+              p.notify('rename folder', `Could not rename: ${errorText(e)}`, 10000)
             }
             this.display()
           }).open(),
@@ -190,7 +198,7 @@ export class AgentSettingTab extends PluginSettingTab {
       )
     new Setting(el)
       .setName('Protected folders')
-      .setDesc('One per line. Jobs are told to skip these and Tag Review will not edit notes in them. The plugin folder, glossary and .obsidian are always protected.')
+      .setDesc('One per line. Jobs are told to skip these. The plugin folder and .obsidian are always protected.')
       .addTextArea((t) =>
         t.setValue(s.protectedFolders.join('\n')).onChange(async (v) => {
           s.protectedFolders = v.split('\n').map((x) => x.trim()).filter(Boolean)
@@ -211,11 +219,10 @@ export class AgentSettingTab extends PluginSettingTab {
             const { shell } = require('electron')
             void shell.openPath(dir)
           } catch {
-            new Notice(dir, 10000)
+            p.notify('open claude logs', dir, 10000)
           }
         }),
       )
-    text('Tag vocabulary note', 'Tag Review edits are validated against tags listed in this note.', () => s.tagVocabularyPath, (v) => (s.tagVocabularyPath = v.trim()))
     new Setting(el)
       .setName('Allowed output folders')
       .setDesc('One per line, vault-relative. Jobs may write under these folders and always under the plugin folder. Add the folders you want job output to go to, then point the job output at one.')
@@ -223,110 +230,6 @@ export class AgentSettingTab extends PluginSettingTab {
         t.setValue(s.allowedOutputFolders.join('\n')).onChange(async (v) => {
           s.allowedOutputFolders = v.split('\n').map((x) => x.trim()).filter(Boolean)
           await p.saveSettings()
-        }),
-      )
-  }
-
-  private renderGlossary(el: HTMLElement) {
-    const p = this.plugin
-    const g = p.settings.glossary
-    new Setting(el).setName('Tag glossary').setHeading()
-    const save = async () => p.saveSettings()
-    el.createEl('p', {
-      cls: 'setting-item-description',
-      text: 'Registries are merged. The core is always imported; pick the teams you want below. Read-only: nothing is pushed.',
-    })
-    g.sources.forEach((src, i) => {
-      new Setting(el)
-        .setName(i === 0 ? 'Registry URL' : `Extra registry ${i}`)
-        .setDesc(
-          i === 0
-            ? 'HTTPS URL of the public tag registry, e.g. https://github.com/owner/tag-registry.'
-            : 'Optional internal or private registry in the same format. It may need authentication.',
-        )
-        .addText((t) => t.setValue(src.repoUrl).onChange(async (v) => { src.repoUrl = v.trim(); await save() }))
-        .addExtraButton((b) =>
-          b.setIcon('trash').setTooltip('Remove').onClick(async () => {
-            g.sources.splice(i, 1)
-            if (!g.sources.length) g.sources.push(newGlossarySource())
-            await save()
-            this.display()
-          }),
-        )
-      new Setting(el)
-        .setName('Branch or tag')
-        .addText((t) => t.setPlaceholder('main').setValue(src.ref).onChange(async (v) => { src.ref = v.trim() || 'main'; await save() }))
-        .addDropdown((d) =>
-          d
-            .addOptions({ https: 'Anonymous HTTPS', git: 'Local git', token: 'Access token' })
-            .setValue(src.authMethod)
-            .onChange(async (v) => { src.authMethod = v as typeof src.authMethod; await save(); this.display() }),
-        )
-      if (src.authMethod === 'token') {
-        const secure = hasSecretStorage(p)
-        new Setting(el)
-          .setName('Access token')
-          .setDesc(
-            secure
-              ? 'Read-only scope. Kept in Obsidian secret storage.'
-              : 'Read-only scope. This Obsidian version has no secret storage, so the token is saved as plain text in the plugin data.json. Exclude that file from Git sync.',
-          )
-          .addText((t) => {
-            t.inputEl.type = 'password'
-            t.setValue(getToken(p, src)).onChange(async (v) => setToken(p, src, v.trim()))
-          })
-      }
-    })
-    new Setting(el).addButton((b) =>
-      b.setButtonText('Add internal registry').onClick(async () => {
-        g.sources.push(newGlossarySource())
-        await save()
-        this.display()
-      }),
-    )
-
-    new Setting(el)
-      .setName('All teams')
-      .setDesc('Import every team in the registries, not just the ones ticked below.')
-      .addToggle((t) => t.setValue(g.allTeams).onChange(async (v) => { g.allTeams = v; await save(); this.display() }))
-    if (!g.allTeams) {
-      if (!g.knownTeams.length) {
-        el.createEl('p', { cls: 'setting-item-description', text: 'No teams known yet. Run "Import / update tag glossary" once to load the team list.' })
-      }
-      for (const team of g.knownTeams) {
-        new Setting(el)
-          .setName(team.name)
-          .setDesc(team.description)
-          .addToggle((t) =>
-            t.setValue(g.teams.includes(team.id)).onChange(async (v) => {
-              g.teams = v ? [...new Set([...g.teams, team.id])] : g.teams.filter((x) => x !== team.id)
-              await save()
-            }),
-          )
-      }
-    }
-
-    const dest = new Setting(el)
-      .setName('Destination folder')
-      .setDesc('Vault folder the glossary notes are imported into: <folder>/core/... and <folder>/<team>/...')
-    dest.addText((t) => {
-      const listId = 'scheduled-agents-folders'
-      const list = el.createEl('datalist', { attr: { id: listId } })
-      for (const f of p.app.vault.getAllFolders(false)) if (f.path !== '/') list.createEl('option', { value: f.path })
-      t.inputEl.setAttr('list', listId)
-      t.setValue(g.destFolder).onChange(async (v) => { g.destFolder = v.trim(); await save() })
-    })
-    new Setting(el)
-      .setName('Check for updates on startup')
-      .setDesc('Shows a notice when the glossary has changes. Never writes anything.')
-      .addToggle((t) => t.setValue(g.checkOnStartup).onChange(async (v) => { g.checkOnStartup = v; await save() }))
-    new Setting(el)
-      .setName('Import / update')
-      .setDesc('Fetches the glossary and shows a preview. Nothing is written until you apply it. Importing also refreshes the team list.')
-      .addButton((b) =>
-        b.setButtonText('Import / update tag glossary').setCta().onClick(async () => {
-          await importGlossary(p)
-          this.display()
         }),
       )
   }
@@ -345,7 +248,7 @@ export class AgentSettingTab extends PluginSettingTab {
         b.setButtonText('Copy').onClick(() =>
           void this.withDiagnostics(async (text) => {
             await navigator.clipboard.writeText(text)
-            new Notice('Diagnostics copied. Paste them into the issue.')
+            this.plugin.notify('diagnostics', 'Diagnostics copied. Paste them into the issue.')
           }),
         ),
       )
@@ -368,7 +271,7 @@ export class AgentSettingTab extends PluginSettingTab {
     try {
       await use(await this.plugin.diagnostics())
     } catch (e) {
-      new Notice(`Could not build diagnostics: ${(e as Error).message}`, 10000)
+      this.plugin.notify('diagnostics', `Could not build diagnostics: ${errorText(e)}`, 10000)
     }
   }
 }

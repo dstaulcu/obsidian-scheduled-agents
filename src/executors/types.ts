@@ -39,3 +39,6 @@ export function checkCapabilities(job: { skills: string[] }, caps: ExecutorCapab
   if (job.skills.length && !caps.supportsSkills) return 'this harness does not support skills; remove them from the job'
   return null
 }
+
+/** Optional diagnostic sink. Callers pass a no-op unless debug logging is on; never pass prompts or note text. */
+export type DebugLog = (msg: string) => void

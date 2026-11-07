@@ -1,3 +1,4 @@
+import { errorText } from './errorText'
 import { isJobDue } from './schedule'
 import { JobConfig, JobState, RunResult, SCHEDULES } from './types'
 
@@ -15,6 +16,8 @@ export interface PassOptions {
   run: (job: JobConfig, now: Date, since?: string) => Promise<RunResult>
   log: (job: JobConfig, status: LogStatus, detail: string) => Promise<void>
   save: () => Promise<void>
+  /** Optional diagnostic sink for why each job ran or was skipped. */
+  debug?: (msg: string) => void
 }
 
 /** One scheduler pass (port of Invoke-Pass). Returns the results of jobs that ran. */
@@ -22,8 +25,12 @@ export async function runPass(o: PassOptions): Promise<Array<{ job: JobConfig; r
   const ran: Array<{ job: JobConfig; result: RunResult }> = []
   for (const job of o.jobs) {
     if (o.onlyId && job.id !== o.onlyId) continue
-    if (!o.force && !job.enabled) continue
+    if (!o.force && !job.enabled) {
+      o.debug?.(`job ${job.id}: skipped, disabled`)
+      continue
+    }
     if (!SCHEDULES.includes(job.schedule)) {
+      o.debug?.(`job ${job.id}: skipped, unknown schedule '${String(job.schedule)}'`)
       await o.log(job, 'skipped', `missing/unknown schedule '${job.schedule}'`)
       continue
     }
@@ -35,9 +42,11 @@ export async function runPass(o: PassOptions): Promise<Array<{ job: JobConfig; r
     try {
       due = !!o.force || isJobDue(job, s, o.now)
     } catch (e) {
-      await o.log(job, 'skipped', (e as Error).message)
+      o.debug?.(`job ${job.id}: skipped, schedule check threw: ${errorText(e)}`)
+      await o.log(job, 'skipped', errorText(e))
       continue
     }
+    o.debug?.(`job ${job.id}: ${due ? 'due' : 'not due'} (${job.schedule} ${job.day} ${job.at}, lastRun ${s.lastRun ?? 'never'}, firstSeen ${s.firstSeen}, failures ${s.failures})`)
     if (!due) continue
 
     const result = await o.run(job, o.now, s.lastSuccess)

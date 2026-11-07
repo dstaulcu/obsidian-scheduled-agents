@@ -4,6 +4,9 @@ import { resolveVaultPath } from '../src/core/vaultPath'
 import { parseSkills, validateJob } from '../src/core/validate'
 import { buildClaudeArgs } from '../src/executors/claudeCli'
 import { JobConfig } from '../src/core/types'
+import { dailyNotesVars, resolveDailyNotes } from '../src/core/dailyNotes'
+import { buildPrompt, resolveOutput } from '../src/core/runner'
+import { parseDays } from '../src/core/days'
 
 describe('parseFrontMatter', () => {
   it('parses scalars, lists, quotes and trailing comments', () => {
@@ -86,7 +89,8 @@ describe('validateJob', () => {
   })
 })
 
-import { BUILTINS, ensureBuiltins, resetBuiltin } from '../src/core/builtinJobs'
+import { BUILTINS, ensureBuiltins, rangeDigestJob, resetBuiltin } from '../src/core/builtinJobs'
+
 import { defaultSettings } from '../src/settings'
 
 describe('built-in jobs', () => {
@@ -120,19 +124,26 @@ describe('built-in jobs', () => {
 })
 
 describe('renamed built-ins', () => {
-  it('carries a seeded Weekly Digest over to Daily Notes Digest without duplicating', () => {
+  it('relabels the old Daily Notes Digest as Weekly Digest, keeping id, schedule and state', () => {
     const s = defaultSettings()
-    const old = { ...BUILTINS[1].make(), name: 'Weekly Digest', builtin: 'Weekly Digest' }
+    const old = { ...BUILTINS[0].make(), name: 'Daily Notes Digest', schedule: 'monthly' as const, day: '3' }
     s.jobs.push(old)
-    ensureBuiltins(s)
-    expect(old.name).toBe('Daily Notes Digest')
-    expect(old.builtin).toBe('default/daily-notes-digest')
+    s.state[old.id] = { failures: 0, lastRun: '2026-10-19T06:00:00' }
+    expect(ensureBuiltins(s)).toBe(true)
+    expect(old.name).toBe('Weekly Digest')
+    expect([old.builtin, old.schedule, old.day]).toEqual(['default/daily-notes-digest', 'monthly', '3'])
+    expect(s.state[old.id].lastRun).toBe('2026-10-19T06:00:00')
     expect(s.jobs.filter((j) => j.builtin === 'default/daily-notes-digest')).toHaveLength(1)
+    expect(ensureBuiltins(s)).toBe(false)
+  })
+  it('keeps a name the user chose', () => {
+    const s = defaultSettings()
+    const mine = { ...BUILTINS[0].make(), name: 'My digest' }
+    s.jobs.push(mine)
+    expect(ensureBuiltins(s)).toBe(false)
+    expect(mine.name).toBe('My digest')
   })
 })
-
-import { dailyNotesVars, resolveDailyNotes } from '../src/core/dailyNotes'
-import { buildPrompt, resolveOutput } from '../src/core/runner'
 
 describe('daily notes location', () => {
   it('prefers core config, then Periodic Notes, then defaults', () => {
@@ -143,7 +154,7 @@ describe('daily notes location', () => {
   })
   it('expands variables in prompts and output paths; root folder gives an empty path prefix', () => {
     expect(dailyNotesVars({ folder: '', format: 'F' }).dailyNotesPath).toBe('')
-    const j = { ...BUILTINS[1].make(), output: '{{dailyNotesPath}}Digests/{{week}}' }
+    const j = { ...BUILTINS[0].make(), output: '{{dailyNotesPath}}Digests/{{week}}' }
     const s = { vaultPath: 'v', defaultModel: 's', defaultTimeoutMinutes: 1, maxBudgetUsd: 1, rules: { allowedFolders: ['Journal'] }, dailyNotes: { folder: 'Journal', format: 'YYYY-MM-DD' } }
     expect(resolveOutput(j, new Date(2026, 9, 22), s)).toBe('Journal/Digests/2026-W43.md')
     const p = buildPrompt(j, new Date(2026, 9, 22), 'v', s)
@@ -154,16 +165,35 @@ describe('daily notes location', () => {
 
 describe('stable built-in ids', () => {
   it('uses namespaced ids and migrates name-as-id installs', () => {
-    expect(BUILTINS.map((b) => b.id)).toEqual(['default/tag-review', 'default/daily-notes-digest'])
+    expect(BUILTINS.map((b) => b.id)).toEqual(['default/daily-notes-digest'])
     const s = defaultSettings()
-    const tag = { ...BUILTINS[0].make(), builtin: 'Tag Review' }
-    const dig = { ...BUILTINS[1].make(), name: 'Weekly Digest', builtin: 'Weekly Digest' }
-    s.jobs.push(tag, dig)
+    const dig = { ...BUILTINS[0].make(), name: 'Weekly Digest', builtin: 'Weekly Digest' }
+    const old = { ...BUILTINS[0].make(), id: 'o', name: 'Daily Notes Digest', builtin: 'Daily Notes Digest' }
+    s.jobs.push(dig)
     ensureBuiltins(s)
-    expect(tag.builtin).toBe('default/tag-review')
     expect(dig.builtin).toBe('default/daily-notes-digest')
-    expect(dig.name).toBe('Daily Notes Digest')
-    expect(s.jobs).toHaveLength(2)
+    expect(s.jobs).toHaveLength(1)
+    const s2 = defaultSettings()
+    s2.jobs.push(old)
+    ensureBuiltins(s2)
+    expect([old.builtin, old.name]).toEqual(['default/daily-notes-digest', 'Weekly Digest'])
+  })
+  it('drops the retired Tag Review built-in and its state, but keeps a user job with that name', () => {
+    const s = defaultSettings()
+    const old = { ...BUILTINS[0].make(), id: 'a', name: 'Tag Review', builtin: 'default/tag-review' }
+    const older = { ...BUILTINS[0].make(), id: 'b', name: 'Tag Review', builtin: 'Tag Review' }
+    const mine = { ...BUILTINS[0].make(), id: 'c', name: 'Tag Review', builtin: undefined }
+    s.jobs.push(old, older, mine)
+    s.state = { a: { failures: 0 }, b: { failures: 0 }, c: { failures: 0 } } as never
+    expect(ensureBuiltins(s)).toBe(true)
+    expect(s.jobs.some((j) => j.id === 'a' || j.id === 'b')).toBe(false)
+    expect(s.jobs.some((j) => j.id === 'c')).toBe(true)
+    expect(Object.keys(s.state)).toEqual(['c'])
+    expect(s.jobs.filter((j) => j.builtin === 'default/daily-notes-digest')).toHaveLength(1)
+  })
+  it('discards settings of the removed tag features', () => {
+    const s = normalizeSettings({ tagVocabularyPath: 'x.md', tagReview: { decisions: {} }, glossary: {} } as never)
+    expect(['tagVocabularyPath', 'tagReview', 'glossary'].some((k) => k in s)).toBe(false)
   })
 })
 
@@ -173,12 +203,11 @@ describe('rename resilience', () => {
     const s = {
       vaultPath: 'v', defaultModel: 's', defaultTimeoutMinutes: 1, maxBudgetUsd: 1,
       rules: { allowedFolders: ['Hub'] },
-      brand: { pluginFolder: 'Hub', pluginName: 'Vault Helper', skipPaths: '`.obsidian/`, `Hub/`', vocabularyPath: 'Hub/Tag Glossary.md', bootstrap: '' },
+      brand: { pluginFolder: 'Hub', pluginName: 'Vault Helper', skipPaths: '`.obsidian/`, `Hub/`' },
     }
-    expect(resolveOutput(j, new Date(2026, 9, 22), s)).toBe('Hub/Tag Review.md')
+    expect(resolveOutput(j, new Date(2026, 9, 22), s)).toBe('Hub/2026-W43 Digest.md')
     const p = buildPrompt(j, new Date(2026, 9, 22), 'v', s)
-    expect(p).toContain('SKIP these paths entirely: `.obsidian/`, `Hub/`.')
-    expect(p).toContain('Vault Helper renders it')
+    expect(p).toContain('Skip `.obsidian/`, `Hub/`.')
     expect(p).not.toContain('{{')
     expect(p).not.toMatch(/BrainAgent|Brain Agent|BRHSBBA/)
   })
@@ -210,32 +239,6 @@ describe('rebasePath', () => {
   })
 })
 
-import { bootstrapText, isEmptyVocabulary, missingVocabularyText, starterVocabulary } from '../src/tagreview/scaffold'
-import { addVocabEntry, definedTags } from '../src/tagreview/vocab'
-
-describe('starter glossary', () => {
-  it('is an empty vocabulary that accepts vocab_add into each default facet and system tags', () => {
-    const v = starterVocabulary()
-    expect(isEmptyVocabulary(v)).toBe(true)
-    let t = v
-    for (const tag of ['areas/home', 'projects/p', 'tools/git', 'techniques/scheduling', 'daily']) t = addVocabEntry(t, tag, 'Definition').content
-    expect([...definedTags(t)].sort()).toEqual(['areas/home', 'daily', 'projects/p', 'techniques/scheduling', 'tools/git'])
-    expect(isEmptyVocabulary(t)).toBe(false)
-  })
-  it('uses the vocabulary path in bootstrap and missing-note prompt text, and builds a facet-agnostic prompt', () => {
-    expect(bootstrapText('Hub/_tags.md')).toContain('Hub/_tags.md')
-    expect(missingVocabularyText('Hub/_tags.md')).toContain('does not exist')
-    const j = BUILTINS[0].make()
-    expect(j.prompt).toContain('{{bootstrap}}')
-    expect(j.prompt).not.toMatch(/tactics|Glossary\/_tags/)
-  })
-  it('defaults the vocabulary into the plugin folder for fresh installs and keeps legacy installs on Glossary', () => {
-    expect(normalizeSettings(null).tagVocabularyPath).toBe('Scheduled Agents/Tag Glossary.md')
-    expect(normalizeSettings({ jobs: [{}] } as never).tagVocabularyPath).toBe('Glossary/_tags.md')
-    expect(normalizeSettings({ tagVocabularyPath: 'Mine/tags.md' } as never).tagVocabularyPath).toBe('Mine/tags.md')
-  })
-})
-
 describe('reset-test hook', () => {
   it('adds built-ins enabled once when seedBuiltinsEnabled is set, then clears the flag', () => {
     const s = normalizeSettings({ seedBuiltinsEnabled: true } as never)
@@ -254,21 +257,52 @@ describe('reset-test hook', () => {
   })
 })
 
-describe('digest default output', () => {
-  it('lands at the root of the plugin folder, with no subfolder', () => {
-    const j = BUILTINS.find((b) => b.id === 'default/daily-notes-digest')!.make()
-    expect(j.output).toBe('{{pluginFolder}}/{{week}} Digest')
-    const s = { vaultPath: 'v', defaultModel: 's', defaultTimeoutMinutes: 1, maxBudgetUsd: 1, rules: { allowedFolders: ['Scheduled Agents'] }, brand: { pluginFolder: 'Scheduled Agents', pluginName: 'P', skipPaths: '', vocabularyPath: '', bootstrap: '' } }
-    expect(resolveOutput(j, new Date(2026, 9, 22), s)).toBe('Scheduled Agents/2026-W43 Digest.md')
+describe('digests', () => {
+  const s = { vaultPath: 'v', defaultModel: 's', defaultTimeoutMinutes: 1, maxBudgetUsd: 1, rules: { allowedFolders: ['Scheduled Agents'] }, brand: { pluginFolder: 'Scheduled Agents', pluginName: 'P', skipPaths: '' } }
+  const now = new Date(2026, 9, 22)
+  it('the built-in runs Mondays 06:00, looks back 7 days and writes at the plugin folder root', () => {
+    const j = BUILTINS[0].make()
+    expect([j.name, j.schedule, j.day, j.at, j.enabled]).toEqual(['Weekly Digest', 'weekly', 'monday', '06:00', false])
+    expect(resolveOutput(j, now, s)).toBe('Scheduled Agents/2026-W43 Digest.md')
+    const p = buildPrompt(j, now, 'v', s)
+    expect(p).toContain('last 7 days')
+    expect(p).not.toContain('{{')
+  })
+  it('the on-demand digest uses the requested number of days and a name that says so', () => {
+    const j = rangeDigestJob(14)
+    expect(j.prompt).toContain('last 14 days')
+    expect(rangeDigestJob(1).prompt).toContain('last 1 day (')
+    expect(resolveOutput(j, now, s)).toBe('Scheduled Agents/2026-10-22 Digest (last 14 days).md')
+    expect(j.builtin).toBeUndefined()
+    expect(validateJob(j)).toBeNull()
+  })
+  it('shows the first-install tip only for brand-new installs', () => {
+    expect(normalizeSettings(null).introShown).toBe(false)
+    expect(normalizeSettings({ jobs: [] } as never).introShown).toBe(true)
+    expect(normalizeSettings({ introShown: false } as never).introShown).toBe(false)
+  })
+  it('parseDays accepts whole numbers from 1 to 365 only', () => {
+    expect(parseDays(' 14 ')).toBe(14)
+    for (const bad of ['', '0', '-3', '2.5', 'abc', '366']) expect(parseDays(bad)).toBeNull()
   })
 })
 
-describe('single-source glossary', () => {
-  it('has no per-tag note machinery in the prompt or the starter page', () => {
-    const p = BUILTINS[0].make().prompt
-    expect(p).not.toMatch(/glossaryFolder|glossary note|<facet>\/<name>/)
-    expect(p).toContain('(status: dormant)')
-    expect(starterVocabulary()).toContain('single source')
-    expect(starterVocabulary()).toContain('(status: dormant)')
+import { errorText, looksBroken } from '../src/core/errorText'
+
+describe('errorText', () => {
+  it('never yields "undefined" for odd thrown values', () => {
+    expect(errorText(new Error('boom'))).toBe('boom')
+    expect(errorText('plain')).toBe('plain')
+    expect(errorText({ message: 'obj' })).toBe('obj')
+    expect(errorText({ code: 1 })).toBe('{"code":1}')
+    expect(errorText(undefined)).toMatch(/unknown error/)
+    expect(errorText(null)).toMatch(/unknown error/)
+    expect(errorText(new Error(''))).toBe('Error')
+    for (const v of [undefined, null, 0, '', {}, new Error()]) expect(looksBroken(errorText(v))).toBe(false)
+  })
+  it('flags text built from missing values', () => {
+    expect(looksBroken('Plugin: undefined failed')).toBe(true)
+    expect(looksBroken('x [object Object]')).toBe(true)
+    expect(looksBroken('all good')).toBe(false)
   })
 })

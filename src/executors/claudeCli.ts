@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'child_process'
 import { parseSkills } from '../core/validate'
-import { ExecRequest, ExecResult, ExecutorCapabilities, JobExecutor } from './types'
+import { DebugLog, ExecRequest, ExecResult, ExecutorCapabilities, JobExecutor } from './types'
 
 /** Read-only comes from --tools Read,Glob,Grep + dontAsk, which Claude Code enforces itself. */
 export const CLAUDE_CAPABILITIES: ExecutorCapabilities = {
@@ -48,8 +48,10 @@ interface ProcResult {
   spawnError?: string
 }
 
-function runProcess(claudePath: string, args: string[], req: ExecRequest): Promise<ProcResult> {
+function runProcess(claudePath: string, args: string[], req: ExecRequest, debug: DebugLog): Promise<ProcResult> {
   return new Promise((resolve) => {
+    const t0 = Date.now()
+    const since = () => `${Date.now() - t0}ms`
     let stdout = ''
     let stderr = ''
     let timedOut = false
@@ -61,6 +63,8 @@ function runProcess(claudePath: string, args: string[], req: ExecRequest): Promi
       resolve({ exitCode: null, stdout, stderr, timedOut, ...r })
     }
 
+    // This is what an OS or security-software prompt about the process would show. The prompt goes via stdin and is not logged.
+    debug(`spawn: ${claudePath} ${args.join(' ')} (cwd ${req.cwd}, platform ${process.platform}, timeout ${req.timeoutMs}ms, prompt ${req.prompt.length} chars)`)
     const child = spawn(claudePath, args, {
       cwd: req.cwd,
       windowsHide: true,
@@ -70,11 +74,20 @@ function runProcess(claudePath: string, args: string[], req: ExecRequest): Promi
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (c: string) => (stdout += c))
     child.stderr.on('data', (c: string) => (stderr += c))
-    child.on('error', (e) => done({ spawnError: e.message }))
-    child.on('close', (code) => done({ exitCode: code }))
+    child.on('spawn', () => debug(`spawned pid ${child.pid} after ${since()}`))
+    child.on('error', (e) => {
+      debug(`process error after ${since()}: ${(e as NodeJS.ErrnoException).code ?? 'no code'}: ${e.message}`)
+      done({ spawnError: e.message })
+    })
+    child.on('close', (code, signal) => {
+      const tail = stderr.trim() ? `, stderr tail: ${stderr.trim().split('\n').slice(-3).join(' | ').slice(0, 500)}` : ''
+      debug(`closed after ${since()}: exit ${code}, signal ${signal ?? 'none'}, stdout ${stdout.length} chars, stderr ${stderr.length} chars${tail}`)
+      done({ exitCode: code })
+    })
 
     const timer = setTimeout(() => {
       timedOut = true
+      debug(`timeout after ${since()}; killing pid ${child.pid}`)
       if (process.platform === 'win32' && child.pid) {
         spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
       } else {
@@ -88,9 +101,11 @@ function runProcess(claudePath: string, args: string[], req: ExecRequest): Promi
 }
 
 /** First line of `claude --version`, or a short reason it could not be read. */
-export function getClaudeVersion(claudePath: string): Promise<string> {
+export function getClaudeVersion(claudePath: string, debug: DebugLog = () => undefined): Promise<string> {
   return new Promise((resolve) => {
+    debug(`version check: ${claudePath} --version`)
     execFile(claudePath, ['--version'], { timeout: 5000, windowsHide: true }, (err, stdout) => {
+      debug(err ? `version check failed: ${err.message.split('\n')[0]}` : 'version check ok')
       if (err) resolve(`unavailable (${err.message.split('\n')[0]})`)
       else resolve(stdout.trim().split('\n')[0] || 'unknown')
     })
@@ -101,10 +116,13 @@ export class ClaudeCliExecutor implements JobExecutor {
   readonly id = 'claude-cli'
   readonly capabilities = CLAUDE_CAPABILITIES
 
-  constructor(private readonly getClaudePath: () => string) {}
+  constructor(
+    private readonly getClaudePath: () => string,
+    private readonly debug: DebugLog = () => undefined,
+  ) {}
 
   async execute(req: ExecRequest): Promise<ExecResult> {
-    const r = await runProcess(this.getClaudePath(), buildClaudeArgs(req), req)
+    const r = await runProcess(this.getClaudePath(), buildClaudeArgs(req), req, this.debug)
     if (r.spawnError) return { ok: false, text: '', error: `could not start claude: ${r.spawnError}` }
     if (r.timedOut) return { ok: false, text: '', error: `timed out after ${Math.round(req.timeoutMs / 60000)} min` }
     if (r.exitCode !== 0) {

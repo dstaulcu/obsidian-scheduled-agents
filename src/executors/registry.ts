@@ -1,7 +1,7 @@
 import * as os from 'os'
 import * as path from 'path'
 import { CLAUDE_CAPABILITIES, ClaudeCliExecutor, getClaudeVersion } from './claudeCli'
-import { ExecutorCapabilities, JobExecutor } from './types'
+import { DebugLog, ExecutorCapabilities, JobExecutor } from './types'
 
 /** Per-harness user configuration (binary location and default model; models are harness-specific names). */
 export interface HarnessConfig {
@@ -15,8 +15,8 @@ export interface ExecutorDescriptor {
   capabilities: ExecutorCapabilities
   defaultConfig(): HarnessConfig
   /** Version string of the installed harness, for issue reports. */
-  getVersion(config: HarnessConfig): Promise<string>
-  create(getConfig: () => HarnessConfig): JobExecutor
+  getVersion(config: HarnessConfig, debug?: DebugLog): Promise<string>
+  create(getConfig: () => HarnessConfig, debug?: DebugLog): JobExecutor
 }
 
 export function defaultClaudePath(): string {
@@ -30,8 +30,8 @@ export const EXECUTORS: ExecutorDescriptor[] = [
     label: 'Claude Code CLI',
     capabilities: CLAUDE_CAPABILITIES,
     defaultConfig: () => ({ path: defaultClaudePath(), defaultModel: 'sonnet' }),
-    getVersion: (config) => getClaudeVersion(config.path),
-    create: (getConfig) => new ClaudeCliExecutor(() => getConfig().path),
+    getVersion: (config, debug) => getClaudeVersion(config.path, debug),
+    create: (getConfig, debug) => new ClaudeCliExecutor(() => getConfig().path, debug),
   },
 ]
 

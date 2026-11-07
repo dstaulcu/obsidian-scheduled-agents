@@ -1,12 +1,12 @@
 # Scheduled Agents (Obsidian plugin)
 
-Scheduled AI reports for your Obsidian vault. Comes with built-in Tag Review and Daily Notes Digest jobs, and you can add your own in Obsidian's settings, each with its own prompt, schedule and output folder. Results land in the plugin's own folder unless you redirect them. Tag Review also proposes tag and vocabulary edits, which are applied only after you approve them.
+Scheduled AI reports for your Obsidian vault. Comes with a built-in Weekly Digest job and an on-demand digest command, and you can add your own in Obsidian's settings, each with its own prompt, schedule and output folder. Results land in the plugin's own folder unless you redirect them.
 
-<!-- Demo GIFs: record per docs/DEMO.md, save as docs/hero.gif and docs/tag-review.gif, then uncomment.
+<!-- Demo GIFs: record per docs/DEMO.md, save as docs/hero.gif, then uncomment.
 ![Run a job and read the result](docs/hero.gif)
 -->
 
-An agent reads your notes; the plugin writes the results as review pages. Tag Review's suggested edits (tag fixes, vocabulary changes) appear as an approve/reject panel and are applied by the plugin only after you approve them, with undo. Other jobs only produce a report.
+An agent reads your notes; the plugin writes the results as review pages. Jobs only produce a report.
 
 - **Desktop only.** Jobs spawn an agent harness you already have installed and logged in (Claude Code CLI today). Jobs run **while Obsidian is open**; a job missed while it was closed runs once at the next launch.
 - **The agent only reads.** The Claude executor gets `Read,Glob,Grep` only: no MCP, no shell, `dontAsk` permissions, user settings only, per-run budget cap and timeout. Each harness declares what it can enforce; a job is refused on a harness that cannot enforce read-only access.
@@ -17,11 +17,13 @@ An agent reads your notes; the plugin writes the results as review pages. Tag Re
 
 Shipped disabled, always present (disable rather than delete; reset restores the default):
 
-- **Tag Review** reads a controlled-vocabulary note and your daily notes, then produces a report with an approve/reject panel for tag fixes and vocabulary changes.
-  New installs get a starter glossary at `<plugin folder>/Tag Glossary.md` (facets `areas`, `projects`, `tools`, `techniques`; facets are just the headings in that note). While it has no tags, Tag Review runs in bootstrap mode and proposes a first vocabulary from the tags you already use, as edits you approve. Existing glossaries are used as they are: point **Tag vocabulary note** at yours.
-- **Daily Notes Digest** summarises the last seven days of daily notes. Daily-notes location and filename format come from Obsidian's Daily notes settings.
+- **Weekly Digest** runs Mondays at 06:00 (or at the next Obsidian start if that was missed) and summarises the last 7 days of daily notes. Daily-notes location and filename format come from Obsidian's Daily notes settings. It is also the template to copy: **Duplicate** it, change the number of days in the prompt and the schedule to get a daily or monthly digest.
 
-<!-- ![Approve, apply and undo tag edits](docs/tag-review.gif) -->
+## On-demand digest
+
+New installs show a one-time tip pointing here.
+
+Run **Run digest for the last N days…** from the command palette, enter a number of days (1 to 365, today counts as day 1), and the plugin writes a one-off page such as `<plugin folder>/2026-10-22 Digest (last 14 days)`. It is not saved as a job, so it leaves no schedule or run state behind. Its result and any failure appear in the run log.
 
 ## Requirements
 
@@ -53,14 +55,14 @@ Copy `main.js`, `manifest.json` and `styles.css` as above, or copy `.deploy.exam
 Contributions go through pull requests; see [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
 
 ```bash
-npm test                          # jest: schedule, paths, runner, tag-review edits
+npm test                          # jest: schedule, paths, runner, diagnostics
 npm run build                     # tsc --noEmit + production bundle -> main.js
 npm run dev                       # esbuild watch
 npm run release[:minor|:major]    # test, bump version everywhere, build
 npm run deploy                    # build and copy into the vault in .deploy.json
 ```
 
-Layout: `src/core` is pure logic (no Obsidian imports, unit-tested), `src/executors` holds the harness interface, capability profile and registry, `src/tagreview` the edit parser, validator and apply engine, `src/ui` the settings tab and job editor, `src/brand.ts` the product-name defaults, `src/main.ts` the plugin wiring.
+Layout: `src/core` is pure logic (no Obsidian imports, unit-tested), `src/executors` holds the harness interface, capability profile and registry, `src/ui` the settings tab and job editor, `src/brand.ts` the product-name defaults, `src/main.ts` the plugin wiring.
 
 ## Reporting a bug
 
@@ -73,7 +75,3 @@ Built with [Claude Code](https://docs.claude.com/en/docs/claude-code) by Anthrop
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Tag registry import
-
-Run **Import / update tag glossary** (command palette or settings) to copy tags from a shared registry (manifest version 2) into the vault. The core is always imported; pick teams in settings or choose **All teams**. Add optional internal registries in the same format; they are merged, and the first source wins on a duplicate tag. Notes land in `Glossary/core/...` and `Glossary/<team>/...`, one per tag. A preview lists new, updated and conflicting notes, and nothing is written until you apply it. Locally edited notes are never overwritten without your choice.

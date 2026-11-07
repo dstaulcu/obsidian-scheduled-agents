@@ -1,3 +1,4 @@
+import { errorText } from './errorText'
 import { JobConfig, MODES, SCHEDULES } from './types'
 import { getLatestOccurrence } from './schedule'
 
@@ -23,7 +24,7 @@ export function validateJob(job: JobConfig): string | null {
     getLatestOccurrence(job, new Date())
     parseSkills(job.skills)
   } catch (e) {
-    return (e as Error).message
+    return errorText(e)
   }
   return null
 }

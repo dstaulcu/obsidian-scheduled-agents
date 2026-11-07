@@ -4,7 +4,7 @@
 // Safety: refuses unless the vault carries the marker created by `node scripts/reset-test.mjs --mark`.
 // Notes go where Obsidian's Daily notes settings put them (vault root when never configured) and only when the format is YYYY-MM-DD.
 // Existing notes with the same name are overwritten; run it on a vault you are fine changing.
-// The tags are deliberately messy (legacy names, mixed case, untagged action items) so Tag Review has something to propose.
+// The tags are deliberately messy (legacy names, mixed case, untagged action items) so the digest has tags to group by.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'

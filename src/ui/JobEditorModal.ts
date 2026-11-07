@@ -1,3 +1,4 @@
+import { errorText } from '../core/errorText'
 import { App, Modal, Setting } from 'obsidian'
 import { EXECUTORS } from '../executors/registry'
 import { resolveOutput } from '../core/runner'
@@ -135,7 +136,7 @@ export class JobEditorModal extends Modal {
       this.previewEl.setText(`→ ${path}`)
       this.previewEl.removeClass('mod-warning')
     } catch (e) {
-      this.previewEl.setText((e as Error).message)
+      this.previewEl.setText(errorText(e))
       this.previewEl.addClass('mod-warning')
     }
   }
@@ -144,14 +145,14 @@ export class JobEditorModal extends Modal {
     try {
       this.job.skills = parseSkills(this.skillsText)
     } catch (e) {
-      return (e as Error).message
+      return errorText(e)
     }
     const err = validateJob(this.job)
     if (err) return err
     try {
       resolveOutput(this.job, new Date(), this.getRunSettings())
     } catch (e) {
-      return (e as Error).message
+      return errorText(e)
     }
     return null
   }
