@@ -3,7 +3,7 @@
   "name": "Scheduled Agents",
   "version": "0.3.0",
   "minAppVersion": "1.4.0",
-  "description": "Comes with a Daily Notes Digest job, and you can add your own on a schedule. Results land in the plugin's own folder unless you redirect them.",
+  "description": "Schedule AI agent jobs on your vault. Ships with a Weekly Digest of your daily notes and an on-demand digest for the last N days; add your own prompts, schedules, and output folders. Results land in the plugin's own folder by default.",
   "author": "David Staulcup",
   "isDesktopOnly": true
 }
